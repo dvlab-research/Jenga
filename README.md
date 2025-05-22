@@ -1,7 +1,6 @@
-
 # Jenga 
 <p align="center">
-  <img src="./assets/title.png"  width=80%>
+  <img src="./assets/title.png" width="80%" max-width="600px">
 </p>
 
 
@@ -12,7 +11,10 @@
 
 > This is the offical implementation of the paper [**Training-Free Efficient Video Generation via Dynamic Token Carving**](https://arxiv.org/abs/) <be>
 ## Overview
-Jenga can generate videos with 4.68-10.35 times faster on single GPU with 80GiB memory.
+Jenga can generate videos with 4.68-10.35 times faster on single GPU.
+<p align="center">
+  <img src="./assets/performance.png"  width=100%>
+</p>
 Please visit the [project page](https://julianjuaner.github.io/projects/jenga) for more video results.
 <p align="center">
   <img src="./assets/teaser_video.gif"  width=100%>
@@ -128,16 +130,16 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=$NPROC_PER_NODE .
 Inference time for different settings (DiT time, 8xH800, after warmup): 
 |HunyuanVideo| Jenga-Base | Jenga-Turbo | Jenga-Flash | Jenga-3Stage |
 | ---- | ---- | ---- | ---- | ---- |
-| 225s | 55s (4.09x)| 40s (5.62x) | 38s (5.92x) | 34s (6.61x) | 
+| 225s | 55s (4.09x)| 40s (5.62x) | 38s (5.92x) | 32s (7.03x) | 
 
-### Run Multiple Samples with Multi-GPU
+#### Run Multiple Samples with Multi-GPU
 Due to the constant time of VAE, we recommend allocating each prompt to a single card for batch sampling. Please check the sample script in Jenga-Turbo.
 ```shell
 bash ./scripts/hyvideo_batched_sample.sh
 ```
 
 ### Inference on AccVideo (Distilled Models)
-The general pipeline is the same, just download weight from [Huggingface](https://huggingface.co/aejion/AccVideo) in `ckpts/AccVideo`
+The general pipeline is the same, just download weight from [Huggingface](https://huggingface.co/aejion/AccVideo) to `ckpts/AccVideo`
 
 Then run the script
 ```shell
@@ -149,6 +151,7 @@ The general idea of Jenga is to reduce token interactions in Diffusion Transform
 <p align="center">
   <img src="./assets/method_overview.png"  width=100%>
 </p>
+
 *The left part* illustrates the attention carving. A 3D video latent is partitioned into local blocks before being passed to the Transformer layers. A block-wise attention is processed to get a head-aware sparse block-selection masks. In each selected block, dense parallel attention is performed. *The right part* illustrates the Progressive Resolution strategy. The number of tokens and timesteps is compressed to ensure an efficient generation.
 
 <br>
@@ -156,14 +159,16 @@ The general idea of Jenga is to reduce token interactions in Diffusion Transform
 <p align="center">
   <img src="./assets/method_AttenCarve.png"  width=100%>
 </p>
-*Attention Carving (AttenCarve).* Here we illustrate a toy example of a 4x4x4$\ latent, where m=8 latent items form a block. Left: The latent 3D re-ordering and block partition via space filling curves (SFC). Right: After the block-wise attention, we can construct the Importance Mask, combined with the pre-computed Condition Mask and Adjacency Mask, a block-wise dense attention mask is passed to the customized kernel for device-efficient attention.
+
+**Attention Carving (AttenCarve).** Here we illustrate a toy example of a 4x4x4$\ latent, where m=8 latent items form a block. *Left:* The latent 3D re-ordering and block partition via space filling curves (SFC). *Right:* After the block-wise attention, we can construct the Importance Mask, combined with the pre-computed Condition Mask and Adjacency Mask, a block-wise dense attention mask is passed to the customized kernel for device-efficient attention.
 
 <br>
 
 <p align="center">
   <img src="./assets/method_ProRes.png"  width=100%>
 </p>
-*Progressive Resolusion (ProRes).* Left: A brief illustration of stage switch and timestep skip. Before the rescale in stage s, we revert the latent to a clean state $\hat{x}^{s}_0$, then re-noise on the upsampled clean latent. Right & Bottom: We add a bias on the video-text attention score, to enable a scalable Field of View (FOV) in low-resolution content generation.
+
+**Progressive Resolusion (ProRes).** *Left:* A brief illustration of stage switch and timestep skip. Before the rescale in stage s, we revert the latent to a clean state $\hat{x}^{s}_0$, then re-noise on the upsampled clean latent. *Right & Bottom:* We add a bias on the video-text attention score, to enable a scalable Field of View (FOV) in low-resolution content generation.
 
 <br>
 
