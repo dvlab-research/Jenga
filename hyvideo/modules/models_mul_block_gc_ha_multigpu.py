@@ -171,16 +171,10 @@ class MMDoubleStreamBlock(nn.Module):
         sa_drop_rate: float = 0.0,
         txt_amp: float = 1.0,
         curve_sel: list = None,
-        block_index: int = 0,
         p_remain_rates: float = 0.5,
         txt_block_num: int = 2,
-        gc_blocks: int = 0,
-        first_level_block_size: list = [4, 8, 4],
-        second_level_block_size: list = [4, 4, 4],
-        hwt: list = [44, 80, 32], # [44, 80, 32] # 24, 40, 32
         ULYSSES_DEGREE: int = 1,
         RING_DEGREE: int = 1,
-        global_factor: float = 0.0,
         per_block_token: int = 128,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
 
@@ -418,10 +412,8 @@ class MMSingleStreamBlock(nn.Module):
         sa_drop_rate: float = 0.0,
         txt_amp: float = 1.0,
         curve_sel: list = None,
-        block_index: int = 0,
         p_remain_rates: float = 0.5,
         txt_block_num: int = 2,
-        gc_blocks: int = 0,
         first_level_block_size: list = [4, 8, 4],
         hwt: list = [44, 80, 32], # [44, 80, 32]
         ULYSSES_DEGREE: int = 1,

@@ -220,7 +220,7 @@ def transformer_sub_forward(
 
     freqs_cis = (freqs_cos, freqs_sin) if freqs_cos is not None else None
 
-    if self.enable_teacache:
+    if self.enable_skip:
         if self.cnt in non_skip_steps or self.start_stage:
             should_calc = True
             self.start_stage = False
@@ -233,7 +233,7 @@ def transformer_sub_forward(
             dist.all_reduce(should_calc_tensor, op=dist.ReduceOp.MIN)
             should_calc = bool(should_calc_tensor.item())
     
-    if self.enable_teacache:
+    if self.enable_skip:
         if not should_calc:
             img += self.previous_residual
         else:
@@ -251,6 +251,7 @@ def transformer_sub_forward(
                     self.sa_drop_rate,
                     self.text_amp,
                     self.curve_sel,
+                    self.p_remain_rates
                 ]
                 img, txt = block(*double_block_args)
             # Merge txt and img to pass through single stream blocks.
@@ -269,6 +270,7 @@ def transformer_sub_forward(
                         self.sa_drop_rate,
                         self.text_amp,
                         self.curve_sel,
+                        self.p_remain_rates
                     ]
                     x = block(*single_block_args)
 
@@ -286,8 +288,10 @@ def transformer_sub_forward(
                 max_seqlen_q,
                 max_seqlen_kv,
                 freqs_cis,
-                sa_drop_rate,
+                self.sa_drop_rate,
                 self.text_amp,
+                self.curve_sel,
+                self.p_remain_rates
             ]
 
             img, txt = block(*double_block_args)
@@ -305,8 +309,10 @@ def transformer_sub_forward(
                     max_seqlen_q,
                     max_seqlen_kv,
                     (freqs_cos, freqs_sin),
-                    sa_drop_rate,
+                    self.sa_drop_rate,
                     self.text_amp,
+                    self.curve_sel,
+                    self.p_remain_rates
                 ]
 
                 x = block(*single_block_args)
@@ -358,7 +364,6 @@ def main():
     hunyuan_video_sampler.pipeline.__class__.__call__ = HunyuanVideoPipelineProRes.__call__
     hunyuan_video_sampler.pipeline.__class__.get_rotary_pos_embed = HunyuanVideoPipelineProRes.get_rotary_pos_embed
     hunyuan_video_sampler.pipeline.transformer.__class__.forward = transformer_sub_forward
-    hunyuan_video_sampler.pipeline.transformer.__class__.curve_sels = curve_sels
     hunyuan_video_sampler.pipeline.transformer.__class__.transformer_sub_forward = transformer_sub_forward
     hunyuan_video_sampler.pipeline.transformer.__class__.curve_sels = curve_sels
     hunyuan_video_sampler.pipeline.transformer.__class__.sa_drop_rates = args.sa_drop_rates
@@ -369,15 +374,10 @@ def main():
     for prompt in prompts:
         # Get the updated args
         args = hunyuan_video_sampler.args
-        hunyuan_video_sampler.pipeline.transformer.__class__.enable_teacache = True
+        hunyuan_video_sampler.pipeline.transformer.__class__.enable_skip = True
         hunyuan_video_sampler.pipeline.transformer.__class__.cnt = 0
         hunyuan_video_sampler.pipeline.transformer.__class__.num_steps = args.infer_steps
-        hunyuan_video_sampler.pipeline.transformer.__class__.rel_l1_thresh = 0.0 # 0.1 for 1.6x speedup, 0.15 for 2.1x speedup
-        hunyuan_video_sampler.pipeline.transformer.__class__.accumulated_rel_l1_distance = 0
-        hunyuan_video_sampler.pipeline.transformer.__class__.previous_modulated_input = None
         hunyuan_video_sampler.pipeline.transformer.__class__.previous_residual = None
-        hunyuan_video_sampler.pipeline.transformer.__class__.block_prev_mask = None
-        hunyuan_video_sampler.pipeline.transformer.__class__.consistent_threshold = 0
         hunyuan_video_sampler.pipeline.transformer.__class__.start_stage = True
         hunyuan_video_sampler.pipeline.transformer.__class__.text_amp = 0.0
         hunyuan_video_sampler.pipeline.transformer.__class__.current_t = latent_time

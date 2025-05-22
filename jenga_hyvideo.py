@@ -150,7 +150,7 @@ def ra_forward(
                         self.sa_drop_rate,
                         self.text_amp,
                         self.curve_sel,
-                        idx
+                        self.p_remain_rates,
                     ]
                     img, txt = block(*double_block_args)
                 # Merge txt and img to pass through single stream blocks.
@@ -169,7 +169,7 @@ def ra_forward(
                             self.sa_drop_rate,
                             self.text_amp,
                             self.curve_sel,
-                            idx + len(self.double_blocks)
+                            self.p_remain_rates,
                         ]
                         x = block(*single_block_args)
 
@@ -187,8 +187,10 @@ def ra_forward(
                     max_seqlen_q,
                     max_seqlen_kv,
                     freqs_cis,
-                    sa_drop_rate,
+                    self.sa_drop_rate,
                     self.text_amp,
+                    self.curve_sel,
+                    self.p_remain_rates,
                 ]
                 img, txt = block(*double_block_args)
 
@@ -205,8 +207,10 @@ def ra_forward(
                         max_seqlen_q,
                         max_seqlen_kv,
                         (freqs_cos, freqs_sin),
-                        sa_drop_rate,
+                        self.sa_drop_rate,
                         self.text_amp,
+                        self.curve_sel,
+                        self.p_remain_rates,
                     ]
 
                     x = block(*single_block_args)
@@ -278,6 +282,7 @@ def main():
         hunyuan_video_sampler.pipeline.transformer.__class__.curve_sel = None
         hunyuan_video_sampler.pipeline.transformer.__class__.sa_drop_rates = args.sa_drop_rates
         hunyuan_video_sampler.pipeline.transformer.__class__.scale_txt_amp = args.scale_txt_amp
+        hunyuan_video_sampler.pipeline.transformer.__class__.enable_skip = args.p_remain_rates
 
         # Start sampling
         outputs = hunyuan_video_sampler.predict(
