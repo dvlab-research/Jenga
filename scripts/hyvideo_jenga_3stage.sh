@@ -7,7 +7,7 @@
 # export TORCHDYNAMO_VERBOSE=1
 # export TORCHINDUCTOR_COMPILE_THREADS=1
 
-CUDA_VISIBLE_DEVICES=0 python3 -u ./jenga_hyvideo.py \
+CUDA_VISIBLE_DEVICES=0 python -u ./jenga_hyvideo.py \
     --video-size 720 1280 \
     --video-length 125 \
 	--infer-steps 50 \
@@ -16,10 +16,10 @@ CUDA_VISIBLE_DEVICES=0 python3 -u ./jenga_hyvideo.py \
 	--embedded-cfg-scale 6.0 \
     --flow-shift 7.0 \
     --flow-reverse \
-    --sa-drop-rates 0.75 0.85 \
+    --sa-drop-rates 0.75 0.85 0.85 \
     --p-remain-rates 0.3 \
-    --post-fix "Jenga_Base" \
+    --post-fix "Jenga_3Stage" \
     --save-path ./results/hyvideo \
-    --res-rate-list 1.0 1.0 \
-    --step-rate-list 0.5 1.0 \
-    --scheduler-shift-list 7 9
+    --res-rate-list 0.5 0.75 1.0 \
+    --step-rate-list 0.3 0.5 1.0 \
+    --scheduler-shift-list 7 9 11

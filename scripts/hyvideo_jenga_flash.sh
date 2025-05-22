@@ -16,10 +16,10 @@ CUDA_VISIBLE_DEVICES=0 python3 -u ./jenga_hyvideo.py \
 	--embedded-cfg-scale 6.0 \
     --flow-shift 7.0 \
     --flow-reverse \
-    --sa-drop-rates 0.75 0.85 \
-    --p-remain-rates 0.3 \
-    --post-fix "Jenga_Base" \
+    --sa-drop-rates 0.8 0.95 \
+    --p-remain-rates 0.5 \
+    --post-fix "Jenga_Flash" \
     --save-path ./results/hyvideo \
-    --res-rate-list 1.0 1.0 \
+    --res-rate-list 0.75 1.0 \
     --step-rate-list 0.5 1.0 \
     --scheduler-shift-list 7 9
