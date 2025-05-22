@@ -1,7 +1,7 @@
 
 # Jenga 
 <p align="center">
-  <img src="./assets/title.png"  width=85%>
+  <img src="./assets/title.png"  width=80%>
 </p>
 
 
