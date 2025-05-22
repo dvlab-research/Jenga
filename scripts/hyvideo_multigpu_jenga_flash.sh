@@ -13,11 +13,11 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=$NPROC_PER_NODE .
 	--embedded-cfg-scale 6.0 \
     --flow-shift 7.0 \
     --flow-reverse \
-    --sa-drop-rates 0.75 0.85 0.85 \
-    --p-remain-rates 0.3 \
-    --post-fix "Jenga_3Stage" \
+    --sa-drop-rates 0.8 0.95 \
+    --p-remain-rates 0.5 \
+    --post-fix "Jenga_Flash" \
     --save-path ./results/hyvideo_multigpu \
-    --res-rate-list 0.5 0.75 1.0 \
-    --step-rate-list 0.3 0.5 1.0 \
+    --res-rate-list 0.75 1.0 \
+    --step-rate-list 0.5 1.0 \
     --ulysses-degree $ULYSSES_DEGREE \
-    --scheduler-shift-list 7 9 11
+    --scheduler-shift-list 7 9

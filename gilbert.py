@@ -271,139 +271,139 @@ def gilbert_xyz2d_r(cur_idx,
 
 def transpose_gilbert_mapping(dims, order=None):
     """
-    创建线性索引与Gilbert曲线索引之间的映射，支持不同的轴顺序
+    Create mapping between linear indices and Gilbert curve indices, supporting different axis orders
     
-    参数:
-        dims: 三个维度的尺寸列表或元组，例如[t, h, w]
-        order: 轴的顺序，默认为[0,1,2]，表示[t,h,w]
-               可以指定为[2,1,0]表示[w,h,t]等不同顺序
+    Parameters:
+        dims: List or tuple of three dimensions, e.g. [t, h, w]
+        order: Order of axes, default is [0,1,2], representing [t,h,w]
+               Can be specified as [2,1,0] to represent [w,h,t] or other orders
         
-    返回:
-        linear_to_hilbert: 长度为dims[0]*dims[1]*dims[2]的列表，存储线性索引对应的Gilbert曲线索引
-        hilbert_to_linear: 长度为dims[0]*dims[1]*dims[2]的列表，存储Gilbert曲线索引对应的线性索引
+    Returns:
+        linear_to_hilbert: List of length dims[0]*dims[1]*dims[2], storing Gilbert curve indices corresponding to linear indices
+        hilbert_to_linear: List of length dims[0]*dims[1]*dims[2], storing linear indices corresponding to Gilbert curve indices
     """
     if len(dims) != 3:
-        raise ValueError("维度必须是三维的")
+        raise ValueError("Dimensions must be three-dimensional")
     
-    # 如果未指定顺序，默认使用[0,1,2]
+    # If no order specified, use default [0,1,2]
     if order is None:
         order = [0, 1, 2]
     
     if len(order) != 3 or set(order) != {0, 1, 2}:
-        raise ValueError("order必须是0,1,2的一个排列")
+        raise ValueError("order must be a permutation of 0,1,2")
     
-    # 提取原始尺寸
+    # Extract original dimensions
     dims_array = np.array(dims)
     
-    # 根据顺序重新排列尺寸
+    # Rearrange dimensions according to order
     t, h, w = dims_array[order]
     
-    # 计算总点数
+    # Calculate total number of points
     total_points = np.prod(dims)
     
-    # 初始化映射数组
+    # Initialize mapping arrays
     linear_to_hilbert = [0] * total_points
     hilbert_to_linear = [0] * total_points
     
-    print(f"正在计算转置Gilbert曲线映射 ({dims} 轴顺序:{order})...")
+    print(f"Computing transposed Gilbert curve mapping ({dims} axis order:{order})...")
     
-    # 计算所有点的Gilbert索引
-    # 创建所有坐标的迭代器
+    # Calculate Gilbert indices for all points
+    # Create iterator for all coordinates
     coords_iter = np.ndindex(*dims)
     
     for linear_idx, coords in enumerate(coords_iter):
-        # 根据order重新排列坐标
-        # 例如，如果order=[2,1,0]，则x对应coords[2]，y对应coords[1]，z对应coords[0]
+        # Rearrange coordinates according to order
+        # For example, if order=[2,1,0], then x corresponds to coords[2], y to coords[1], z to coords[0]
         transposed_coords = [coords[order[2]], coords[order[1]], coords[order[0]]]
         
-        # 计算Gilbert曲线索引
+        # Calculate Gilbert curve index
         x, y, z = transposed_coords
         hilbert_idx = gilbert_xyz2d(x, y, z, w, h, t)
         
-        # 设置映射
+        # Set mapping
         linear_to_hilbert[linear_idx] = hilbert_idx
         hilbert_to_linear[hilbert_idx] = linear_idx
     
-    print(f"转置Gilbert曲线映射计算完成，共 {total_points} 个点")
+    print(f"Transposed Gilbert curve mapping completed, total {total_points} points")
     return linear_to_hilbert, hilbert_to_linear
 
 def gilbert_mapping(t, h, w, transpose_order=None):
     """
-    创建线性索引与Gilbert曲线索引之间的映射，可选地支持转置
+    Create mapping between linear indices and Gilbert curve indices, optionally supporting transposition
     
-    参数:
-        t: 第一个维度的大小
-        h: 第二个维度的大小
-        w: 第三个维度的大小
-        transpose_order: 轴顺序，默认为None (使用标准顺序[0,1,2])
-                        可以指定为[2,1,0]等不同顺序
+    Parameters:
+        t: Size of the first dimension
+        h: Size of the second dimension
+        w: Size of the third dimension
+        transpose_order: Axis order, default is None (using standard order [0,1,2])
+                        Can be specified as [2,1,0] or other orders
         
-    返回:
-        linear_to_hilbert: 长度为t*h*w的列表，存储线性索引对应的Gilbert曲线索引
-        hilbert_to_linear: 长度为t*h*w的列表，存储Gilbert曲线索引对应的线性索引
+    Returns:
+        linear_to_hilbert: List of length t*h*w, storing Gilbert curve indices corresponding to linear indices
+        hilbert_to_linear: List of length t*h*w, storing linear indices corresponding to Gilbert curve indices
     """
     dims = [t, h, w]
     
     if transpose_order is None:
-        # 标准Gilbert映射，不进行转置
+        # Standard Gilbert mapping, no transposition
         total_points = t * h * w
         
-        # 初始化映射数组
+        # Initialize mapping arrays
         linear_to_hilbert = [0] * total_points
         hilbert_to_linear = [0] * total_points
         
-        print(f"正在计算Gilbert曲线映射 ({w}×{h}×{t})...")
+        print(f"Computing Gilbert curve mapping ({w}×{h}×{t})...")
         
-        # 计算所有点的Gilbert索引
+        # Calculate Gilbert indices for all points
         for z in range(t):
             for y in range(h):
                 for x in range(w):
-                    # 计算线性索引 (row-major order: z*h*w + y*w + x)
+                    # Calculate linear index (row-major order: z*h*w + y*w + x)
                     linear_idx = z * h * w + y * w + x
                     
-                    # 计算Gilbert曲线索引
+                    # Calculate Gilbert curve index
                     hilbert_idx = gilbert_xyz2d(x, y, z, w, h, t)
                     
-                    # 设置映射
+                    # Set mapping
                     linear_to_hilbert[linear_idx] = hilbert_idx
                     hilbert_to_linear[hilbert_idx] = linear_idx
         
-        print(f"Gilbert曲线映射计算完成，共 {total_points} 个点")
+        print(f"Gilbert curve mapping completed, total {total_points} points")
     else:
-        # 使用转置映射
+        # Use transposed mapping
         linear_to_hilbert, hilbert_to_linear = transpose_gilbert_mapping(dims, transpose_order)
     
     return linear_to_hilbert, hilbert_to_linear
 
 def block_wise_mapping(t, h, w, block_size=[4, 4, 8]):
     """
-    创建基于块的映射，将3D空间划分为固定大小的块
+    Create block-based mapping, dividing 3D space into fixed-size blocks
     
-    参数:
-        t, h, w: 整体空间的三个维度大小
-        block_size: 每个块的大小 [bt, bh, bw]
+    Parameters:
+        t, h, w: The three dimensions of the overall space
+        block_size: Size of each block [bt, bh, bw]
         
-    返回:
-        linear_to_block_order: 列表，存储每个线性索引对应的块序号
-        block_order: 列表，存储每个块的起始线性索引
-        block_neighbor_mask: 列表，存储每个块的26邻域(加上自己)的mask
+    Returns:
+        linear_to_block_order: List storing the block number corresponding to each linear index
+        block_order: List storing the starting linear index of each block
+        block_neighbor_mask: List storing the 26-neighborhood (plus itself) mask for each block
     """
     bt, bh, bw = block_size
     
-    # 计算在每个维度上的块数
+    # Calculate number of blocks in each dimension
     num_blocks_t = (t + bt - 1) // bt
     num_blocks_h = (h + bh - 1) // bh
     num_blocks_w = (w + bw - 1) // bw
     total_blocks = num_blocks_t * num_blocks_h * num_blocks_w
     
-    # 初始化映射数组
+    # Initialize mapping arrays
     total_points = t * h * w
     linear_to_block_order = [0] * total_points
     block_order = [0] * total_blocks
     
-    print(f"正在计算块映射 ({t}×{h}×{w}) -> 块大小({bt}×{bh}×{bw})")
+    print(f"Computing block mapping ({t}×{h}×{w}) -> block size({bt}×{bh}×{bw})")
     
-    # 为每个点分配块序号
+    # Assign block number to each point
     for z in range(t):
         block_z = z // bt
         for y in range(h):
@@ -411,17 +411,17 @@ def block_wise_mapping(t, h, w, block_size=[4, 4, 8]):
             for x in range(w):
                 block_x = x // bw
                 
-                # 计算线性索引
+                # Calculate linear index
                 linear_idx = z * h * w + y * w + x
                 
-                # 计算块序号 (使用行优先顺序)
+                # Calculate block number (using row-major order)
                 block_idx = (block_z * num_blocks_h * num_blocks_w + 
                            block_y * num_blocks_w + 
                            block_x)
                 
                 linear_to_block_order[linear_idx] = block_idx
     
-    # 计算每个块的起始线性索引
+    # Calculate starting linear index for each block
     for block_z in range(num_blocks_t):
         z_start = block_z * bt
         for block_y in range(num_blocks_h):
@@ -429,18 +429,18 @@ def block_wise_mapping(t, h, w, block_size=[4, 4, 8]):
             for block_x in range(num_blocks_w):
                 x_start = block_x * bw
                 
-                # 计算块序号
+                # Calculate block number
                 block_idx = (block_z * num_blocks_h * num_blocks_w + 
                            block_y * num_blocks_w + 
                            block_x)
                 
-                # 计算该块的起始线性索引
+                # Calculate starting linear index for this block
                 block_order[block_idx] = z_start * h * w + y_start * w + x_start
     
-    # 创建block_neighbor_mask
+    # Create block_neighbor_mask
     block_neighbor_mask = []
     
-    # 对每个块计算其邻域mask
+    # Calculate neighborhood mask for each block
     for block_z in range(num_blocks_t):
         for block_y in range(num_blocks_h):
             for block_x in range(num_blocks_w):
@@ -448,10 +448,10 @@ def block_wise_mapping(t, h, w, block_size=[4, 4, 8]):
                                    block_y * num_blocks_w + 
                                    block_x)
                 
-                # 存储当前块及其邻居的块序号
+                # Store block numbers of current block and its neighbors
                 neighbors = []
                 
-                # 遍历3x3x3邻域
+                # Traverse 3x3x3 neighborhood
                 for dz in [-1, 0, 1]:
                     nz = block_z + dz
                     if nz < 0 or nz >= num_blocks_t:
@@ -467,16 +467,16 @@ def block_wise_mapping(t, h, w, block_size=[4, 4, 8]):
                             if nx < 0 or nx >= num_blocks_w:
                                 continue
                                 
-                            # 计算邻居块的序号
+                            # Calculate neighbor block number
                             neighbor_idx = (nz * num_blocks_h * num_blocks_w + 
                                          ny * num_blocks_w + 
                                          nx)
                             
-                            # 将块序号除以block_size，得到重排序后的块序号
+                            # Divide block number by block_size to get reordered block number
                             reordered_idx = block_order[neighbor_idx] // (bt * bh * bw)
                             neighbors.append(reordered_idx)
                 
-                # 对neighbors进行排序以保持一致性
+                # Sort neighbors to maintain consistency
                 neighbors.sort()
                 block_neighbor_mask.append(neighbors)
     
@@ -484,51 +484,51 @@ def block_wise_mapping(t, h, w, block_size=[4, 4, 8]):
 
 def gilbert_block_neighbor_mapping(t, h, w, block_size=128, transpose_order=None):
     """
-    基于Gilbert曲线映射找出3D空间中每个block的邻域blocks
+    Based on Gilbert curve mapping, find the neighborhood blocks for each block in 3D space
     
-    参数:
-        t, h, w: 3D空间的尺寸
-        block_size: 每个block包含的token数量，默认128
-        transpose_order: Gilbert曲线的轴顺序，默认为None
+    Parameters:
+        t, h, w: Dimensions of 3D space
+        block_size: Number of tokens in each block, default 128
+        transpose_order: Axis order for Gilbert curve, default None
         
-    返回:
-        block_neighbors_list: 每个block的邻域block列表
+    Returns:
+        block_neighbors_list: List of neighborhood blocks for each block
     """
-    # 1. 计算总点数和总block数
+    # 1. Calculate total points and total blocks
     total_points = t * h * w
     total_blocks = (total_points + block_size - 1) // block_size
     
-    print(f"空间大小: {t}×{h}×{w}, 总点数: {total_points}, 总block数: {total_blocks}")
+    print(f"Space size: {t}×{h}×{w}, total points: {total_points}, total blocks: {total_blocks}")
     
-    # 2. 创建3D空间的block染色图
+    # 2. Create block coloring map for 3D space
     block_color_map = np.zeros((w, h, t), dtype=int)
     
-    # 3. 将gilbert曲线上的点染色
+    # 3. Color points along the gilbert curve
     for x in range(w):
         for y in range(h):
             for z in range(t):
-                # 计算Gilbert曲线索引
+                # Calculate Gilbert curve index
                 hilbert_idx = gilbert_xyz2d(x, y, z, w, h, t)
                 
-                # 计算block序号
+                # Calculate block number
                 block_idx = hilbert_idx // block_size
                 
-                # 染色：将该位置标记为所属的block
+                # Coloring: mark this position with its block
                 block_color_map[x, y, z] = block_idx
     
-    # 4. 初始化邻域集合
+    # 4. Initialize neighborhood sets
     block_neighbors = [set() for _ in range(total_blocks)]
     
-    # 5. 遍历3D空间，更新邻域关系
+    # 5. Traverse 3D space, update neighborhood relationships
     for x in range(w):
         for y in range(h):
             for z in range(t):
                 current_block = block_color_map[x, y, z]
                 
-                # 将自己加入到自己的邻域中
+                # Add itself to its own neighborhood
                 block_neighbors[current_block].add(current_block)
                 
-                # 检查26邻域
+                # Check 26-neighborhood
                 for dx in [-1, 0, 1]:
                     nx = x + dx
                     if nx < 0 or nx >= w:
@@ -544,22 +544,22 @@ def gilbert_block_neighbor_mapping(t, h, w, block_size=128, transpose_order=None
                             if nz < 0 or nz >= t:
                                 continue
                             
-                            # 跳过自身(虽然已经加入过了)
+                            # Skip itself (although already added)
                             if dx == 0 and dy == 0 and dz == 0:
                                 continue
                                 
-                            # 获取邻居的block
+                            # Get neighbor's block
                             neighbor_block = block_color_map[nx, ny, nz]
                             
-                            # 添加到当前block的邻域中
+                            # Add to current block's neighborhood
                             block_neighbors[current_block].add(neighbor_block)
     
-    # 6. 将邻域集合转换为排序列表
+    # 6. Convert neighborhood sets to sorted lists
     block_neighbors_list = [sorted(neighbors) for neighbors in block_neighbors]
     # convert to one-hot tensor
     block_neighbor_tensor = torch.zeros((total_blocks, total_blocks), dtype=torch.bool)
     for i, neighbors in enumerate(block_neighbors_list):
         block_neighbor_tensor[i, neighbors] = True
-    print(f"已计算 {len(block_neighbors_list)} 个block的邻域关系")
+    print(f"Calculated neighborhood relationships for {len(block_neighbors_list)} blocks")
     # print(block_neighbors_list)
     return block_neighbor_tensor

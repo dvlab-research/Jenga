@@ -67,10 +67,10 @@ bash scripts/hyvideo_jenga_base.sh # Jenga Base (Opt. 310s)
 # bash scripts/hyvideo_jenga_flash.sh # Jenga Flash
 # bash scripts/hyvideo_jenga_3stage.sh # Jenga 3Stage 
 ```
-Inference time for different settings (DiT time, single H800): 
-| Jenga-Base | Jenga-Turbo | Jenga-Flash | Jenga-3Stage |
-| ---- | ---- | ---- | ---- |
-| 310s (5.24x) | 225s (7.22x) | 184s (8.82x)| 157s (10.35x)| 
+Inference time for different settings (DiT time, single H800, after warmup): 
+|HunyuanVideo| Jenga-Base | Jenga-Turbo | Jenga-Flash | Jenga-3Stage |
+| ----| ---- | ---- | ---- | ---- |
+|1625s| 310s (5.24x) | 225s (7.22x) | 184s (8.82x)| 157s (10.35x)| 
 
 If you want to type your prompt directly, just change the `--prompt`. Following command (for Jenga-Turbo)
 > If you encounters OOM issue, try to add `--use-cpu-offload`.
@@ -95,8 +95,46 @@ CUDA_VISIBLE_DEVICES=0 python3 -u ./jenga_hyvideo.py \
 ```
 
 #### Multi GPU Inference
+We provide set of 8GPU runnable scripts (further 5-6x compared with single GPU):
+```shell
+bash scripts/hyvide_multigpu_jenga_base.sh 
+# bash scripts/hyvide_multigpu_jenga_turbo.sh 
+# bash scripts/hyvide_multigpu_jenga_flash.sh 
+# bash scripts/hyvide_multigpu_jenga_3stage.sh 
+```
+For customizing (Jenga-Turbo as example):
+```shell
+export NPROC_PER_NODE=8
+export ULYSSES_DEGREE=8 # number of GPU
 
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 torchrun --nproc_per_node=$NPROC_PER_NODE ./jenga_hyvideo_multigpu.py \
+    --video-size 720 1280 \
+    --video-length 125 \
+    --infer-steps 50 \
+    --prompt "The camera rotates around a large stack of vintage televisions all showing different programs -- 1950s sci-fi movies, horror movies, news, static, a 1970s sitcom, etc, set inside a large New York museum gallery." \
+    --seed 42 \
+    --embedded-cfg-scale 6.0 \
+    --flow-shift 7.0 \
+    --flow-reverse \
+    --sa-drop-rates 0.75 0.85 \
+    --p-remain-rates 0.3 \
+    --post-fix "Jenga_Turbo" \
+    --save-path ./results/hyvideo_multigpu \
+    --res-rate-list 0.75 1.0 \
+    --step-rate-list 0.5 1.0 \
+    --ulysses-degree $ULYSSES_DEGREE \
+    --scheduler-shift-list 7 9
+```
+Inference time for different settings (DiT time, 8xH800, after warmup): 
+|HunyuanVideo| Jenga-Base | Jenga-Turbo | Jenga-Flash | Jenga-3Stage |
+| ---- | ---- | ---- | ---- | ---- |
+| 225s | 55s (4.09x)| 40s (5.62x) | 38s (5.92x) | 34s (6.61x) | 
 
+### Run Multiple Samples with Multi-GPU
+Due to the constant time of VAE, we recommend allocating each prompt to a single card for batch sampling. Please check the sample script in Jenga-Turbo.
+```shell
+bash hyvideo_batched_sample.sh
+```
 
 ## Method Overview
 The general idea of Jenga is to reduce token interactions in Diffusion Transformers (DiTs). Following is an overview.
