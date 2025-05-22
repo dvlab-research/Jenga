@@ -15,7 +15,9 @@ Jenga can generate videos with 4.68-10.35 times faster on single GPU.
 <p align="center">
   <img src="./assets/performance.png"  width=100%>
 </p>
+
 Please visit the [project page](https://julianjuaner.github.io/projects/jenga) for more video results.
+
 <p align="center">
   <img src="./assets/teaser_video.gif"  width=100%>
 </p>
