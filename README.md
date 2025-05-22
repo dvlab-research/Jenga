@@ -133,7 +133,15 @@ Inference time for different settings (DiT time, 8xH800, after warmup):
 ### Run Multiple Samples with Multi-GPU
 Due to the constant time of VAE, we recommend allocating each prompt to a single card for batch sampling. Please check the sample script in Jenga-Turbo.
 ```shell
-bash hyvideo_batched_sample.sh
+bash ./scripts/hyvideo_batched_sample.sh
+```
+
+### Inference on AccVideo (Distilled Models)
+The general pipeline is the same, just download weight from [Huggingface](https://huggingface.co/aejion/AccVideo) in `ckpts/AccVideo`
+
+Then run the script
+```shell
+bash ./scripts/accvideo_jenga.sh
 ```
 
 ## Method Overview

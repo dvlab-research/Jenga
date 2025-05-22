@@ -1,0 +1,30 @@
+#!/bin/bash
+# Description: This script demonstrates how to inference a video based on AccVideo model
+
+# enable debug
+# export CUDA_LAUNCH_BLOCKING=1
+# export TORCH_LOGS="+dynamo"
+# export TORCHDYNAMO_VERBOSE=1
+# export TORCHINDUCTOR_COMPILE_THREADS=1
+
+DIT_WEIGHT="./ckpts/AccVideo/accvideo-t2v-5-steps/diffusion_pytorch_model.pt"
+MODEL_BASE="./ckpts/AccVideo"
+
+CUDA_VISIBLE_DEVICES=0 python3 -u ./jenga_hyvideo.py \
+    --video-size 720 1280 \
+    --video-length 125 \
+	--infer-steps 5 \
+    --model-base $MODEL_BASE \
+    --dit-weight $DIT_WEIGHT \
+    --prompt ./assets/prompt_sora.txt \
+    --seed 42 \
+	--embedded-cfg-scale 6.0 \
+    --flow-shift 7.0 \
+    --flow-reverse \
+    --sa-drop-rates 0.7 0.8 \
+    --p-remain-rates 0.3 \
+    --post-fix "Jenga_Turbo" \
+    --save-path ./results/accvideo \
+    --res-rate-list 0.75 1.0 \
+    --step-rate-list 0.5 1.0 \
+    --scheduler-shift-list 7 9
