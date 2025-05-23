@@ -282,7 +282,7 @@ def main():
         hunyuan_video_sampler.pipeline.transformer.__class__.curve_sel = None
         hunyuan_video_sampler.pipeline.transformer.__class__.sa_drop_rates = args.sa_drop_rates
         hunyuan_video_sampler.pipeline.transformer.__class__.scale_txt_amp = args.scale_txt_amp
-        hunyuan_video_sampler.pipeline.transformer.__class__.enable_skip = args.p_remain_rates
+        hunyuan_video_sampler.pipeline.transformer.__class__.p_remain_rates = args.p_remain_rates
 
         # Start sampling
         outputs = hunyuan_video_sampler.predict(
