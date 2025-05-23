@@ -6,10 +6,10 @@
 
 <div align="center">
   <a href="https://julianjuaner.github.io/projects/jenga"><img src="https://img.shields.io/static/v1?label=Project%20Page&message=Web&color=orange"></a> &ensp;
-  <a href=""><img src="https://img.shields.io/static/v1?label=arXiv&message=Web&color=brown"></a> &ensp;
+  <a href="https://arxiv.org/abs/2505.16864"><img src="https://img.shields.io/static/v1?label=arXiv&message=Web&color=brown"></a> &ensp;
 </div>
 
-> This is the offical implementation of the paper [**Training-Free Efficient Video Generation via Dynamic Token Carving**](https://arxiv.org/abs/) <be>
+> This is the offical implementation of the paper [**Training-Free Efficient Video Generation via Dynamic Token Carving**](https://arxiv.org/abs/2505.16864) <be>
 ## Overview
 Jenga can generate videos with 4.68-10.35 times faster on single GPU.
 <p align="center">
@@ -162,7 +162,7 @@ The general idea of Jenga is to reduce token interactions in Diffusion Transform
   <img src="./assets/method_AttenCarve.png"  width=100%>
 </p>
 
-**Attention Carving (AttenCarve).** Here we illustrate a toy example of a 4x4x4$\ latent, where m=8 latent items form a block. *Left:* The latent 3D re-ordering and block partition via space filling curves (SFC). *Right:* After the block-wise attention, we can construct the Importance Mask, combined with the pre-computed Condition Mask and Adjacency Mask, a block-wise dense attention mask is passed to the customized kernel for device-efficient attention.
+**Attention Carving (AttenCarve).** Here we illustrate a toy example of a 4x4x4 latent, where m=8 latent items form a block. *Left:* The latent 3D re-ordering and block partition via space filling curves (SFC). *Right:* After the block-wise attention, we can construct the Importance Mask, combined with the pre-computed Condition Mask and Adjacency Mask, a block-wise dense attention mask is passed to the customized kernel for device-efficient attention.
 
 <br>
 
@@ -175,13 +175,14 @@ The general idea of Jenga is to reduce token interactions in Diffusion Transform
 <br>
 
 ## Citation
-If you find [Jenga](https://arxiv.org/abs/) useful for your research and applications, please cite using this BibTeX:
+If you find [Jenga](https://arxiv.org/abs/2505.16864) useful for your research and applications, please cite using this BibTeX:
 
 ```BibTeX
-@misc{zhang2025Jenga,
-      title={Training-Free Efficient Video Generation via Dynamic Token Carving}, 
-      author={YC},
-      year={2025},
+@article{zhang2025trainingfreeefficientvideogeneration,
+    title={Training-Free Efficient Video Generation via Dynamic Token Carving},
+    author={Yuechen Zhang and Jinbo Xing and Bin Xia and Shaoteng Liu and Bohao Peng and Xin Tao and Pengfei Wan and Eric Lo and Jiaya Jia},
+    journal={arXiv preprint arXiv:2505.16864},
+    year={2025}
 }
 ```
 
