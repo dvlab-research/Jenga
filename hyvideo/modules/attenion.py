@@ -177,7 +177,7 @@ def my_parallel_attention(
         v[:, :img_kv_len, :, :],
         dropout_p=0.0,
         causal=False,
-        # JULIAN: here we use full txt block.
+        # JENGA: here we use full txt block.
         joint_tensor_query=q[:,img_q_len:],
         joint_tensor_key=k[:,img_kv_len:],
         joint_tensor_value=v[:,img_kv_len:],

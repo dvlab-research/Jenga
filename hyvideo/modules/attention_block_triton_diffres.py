@@ -36,112 +36,6 @@ from flash_attn import flash_attn_func
 # # )
 
 @triton.jit
-def _triton_block_sparse_attn_fwd_kernel(
-    Q, K, V, seqlens, sm_scale, text_amp_runtime, text_block_start_runtime,
-    block_index,
-    Out,
-    stride_qz, stride_qh, stride_qm, stride_qk,
-    stride_kz, stride_kh, stride_kn, stride_kk,
-    stride_vz, stride_vh, stride_vn, stride_vk,
-    stride_oz, stride_oh, stride_om, stride_ok,
-    Z, H, N_CTX,
-    NUM_ROWS, MAX_BLOCKS_PRE_ROW,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_DMODEL: tl.constexpr,
-    dtype: tl.constexpr,
-    is_text_block: tl.constexpr,  # 表示当前是否是文本块
-):
-    start_m = tl.program_id(0)
-    off_hz = tl.program_id(1)
-
-    seqlen = tl.load(seqlens + off_hz // H)
-    if start_m * BLOCK_M >= seqlen:
-        return
-
-    # initialize offsets
-    offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    offs_n = tl.arange(0, BLOCK_N)
-    offs_d = tl.arange(0, BLOCK_DMODEL)
-
-    qo_offset = (off_hz // H) * stride_qz + (off_hz % H) * stride_qh
-    kv_offset = (off_hz // H) * stride_kz + (off_hz % H) * stride_kh
-
-    q_ptrs = Q + qo_offset + offs_m[:, None] * stride_qm + offs_d[None, :] * stride_qk
-    k_ptrs = K + kv_offset + offs_d[:, None] * stride_kk
-    v_ptrs = V + kv_offset + offs_d[None, :] * stride_vk
-    o_ptrs = Out + qo_offset + offs_m[:, None] * stride_om + offs_d[None, :] * stride_ok
-
-    blocks_ptr = block_index + (off_hz * NUM_ROWS + start_m) * MAX_BLOCKS_PRE_ROW
-
-    # initialize pointer to m and l
-    m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
-    l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
-    acc = tl.zeros([BLOCK_M, BLOCK_DMODEL], dtype=tl.float32)
-    # scale sm_scale by log_2(e) and use
-    # 2^x instead of exp in the loop because CSE and LICM
-    # don't work as expected with `exp` in the loop
-    qk_scale = sm_scale * 1.44269504
-    # load q: it will stay in SRAM throughout
-    q = tl.load(q_ptrs)
-    q = (q * qk_scale).to(dtype)
-
-    # loop over k, v and update accumulator
-    m_mask = offs_m[:, None] < seqlen
-    
-    # 为文本块使用最大块数，为普通块使用top-k
-    if is_text_block:
-        # 文本块 - 使用所有可用块 (full attention)
-        block_count = MAX_BLOCKS_PRE_ROW                                                 
-    else:
-        # 普通块 - 使用所有可用块（基于重要性选择的top-k个块）
-        block_count = MAX_BLOCKS_PRE_ROW
-
-    for sparse_block_idx in range(block_count):
-        real_block_idx = tl.load(blocks_ptr + sparse_block_idx)
-        is_valid_block = real_block_idx >= 0
-        if is_valid_block:
-            start_n = real_block_idx * BLOCK_N
-            cols = start_n + offs_n
-            
-            # -- load k, v --
-            k = tl.load(k_ptrs + cols[None, :] * stride_kn)
-            v = tl.load(v_ptrs + cols[:, None] * stride_vn)
-            
-            # -- compute qk --
-            qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-            
-            # 更安全的方式限制KV：使用原始的m_mask，然后在qk矩阵计算后再应用kv范围检查
-            qk = tl.where(m_mask, qk, float("-inf"))
-            qk += tl.dot(q, k)
-            
-            # 使用运行时参数
-            is_text_block_cond = real_block_idx >= text_block_start_runtime
-            qk = tl.where(is_text_block_cond, qk + text_amp_runtime, qk)
-            
-            # 创建KV掩码并应用 - 这里注意用法，避免维度不匹配问题
-            kv_valid = cols[None, :] < seqlen
-            qk = tl.where(kv_valid, qk, float("-inf"))
-            
-            # -- compute scaling constant --
-            m_i_new = tl.maximum(m_i, tl.max(qk, 1))
-            alpha = tl.math.exp2(m_i - m_i_new)
-            p = tl.math.exp2(qk - m_i_new[:, None])
-            
-            # -- scale and update acc --
-            acc_scale = l_i * 0 + alpha  # workaround some compiler bug
-            acc *= acc_scale[:, None]
-            acc += tl.dot(p.to(dtype), v)
-            
-            # -- update m_i and l_i --
-            l_i = l_i * alpha + tl.sum(p, 1)
-            m_i = m_i_new
-
-    # write back O
-    acc /= l_i[:, None]
-    tl.store(o_ptrs, acc.to(dtype), mask=m_mask)
-
-@triton.jit
 def _triton_block_sparse_attn_fwd_kernel_onehot(
     Q, K, V, seqlens, qk_scale, text_amp_runtime, text_block_start_runtime,
     block_mask,  # [BATCH*HEADS, NUM_ROWS, NUM_BLOCKS] one-hot mask
@@ -150,17 +44,17 @@ def _triton_block_sparse_attn_fwd_kernel_onehot(
     stride_kz, stride_kh, stride_kn, stride_kk,
     stride_vz, stride_vh, stride_vn, stride_vk,
     stride_oz, stride_oh, stride_om, stride_ok,
-    stride_bz, stride_bm, stride_bn,  # 额外的block_mask的步长
+    stride_bz, stride_bm, stride_bn,  # additional strides for block_mask
     Z, H, N_CTX,
-    NUM_BLOCKS,  # 总块数
+    NUM_BLOCKS,  # total number of blocks
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_DMODEL: tl.constexpr,
     dtype: tl.constexpr,
-    is_text_block: tl.constexpr,  # 表示当前是否是文本块
+    is_text_block: tl.constexpr,  # indicates whether this is a text block
 ):
-    start_m = tl.program_id(0)  # 当前处理的query块
-    off_hz = tl.program_id(1)   # batch * head索引
+    start_m = tl.program_id(0)  # Current query block being processed
+    off_hz = tl.program_id(1)   # batch * head index
 
     seqlen = tl.load(seqlens + off_hz // H)
     if start_m * BLOCK_M >= seqlen:
@@ -179,7 +73,7 @@ def _triton_block_sparse_attn_fwd_kernel_onehot(
     v_ptrs = V + kv_offset + offs_d[None, :] * stride_vk
     o_ptrs = Out + qo_offset + offs_m[:, None] * stride_om + offs_d[None, :] * stride_ok
 
-    # 当前batch*head和query块对应的block mask行
+    # Current block mask row corresponding to this batch*head and query block
     mask_ptr = block_mask + off_hz * stride_bz + start_m * stride_bm
 
     # initialize pointer to m and l
@@ -196,9 +90,9 @@ def _triton_block_sparse_attn_fwd_kernel_onehot(
     # loop over k, v and update accumulator
     m_mask = offs_m[:, None] < seqlen
     
-    # 遍历所有块 (使用one-hot mask)
+    # Iterate through all blocks (using one-hot mask)
     for block_idx in range(NUM_BLOCKS):
-        # 检查当前块是否在one-hot mask中被标记
+        # Check if current block is marked in the one-hot mask
         is_valid_block = tl.load(mask_ptr + block_idx * stride_bn)
         if is_valid_block:
             start_n = block_idx * BLOCK_N
@@ -211,15 +105,15 @@ def _triton_block_sparse_attn_fwd_kernel_onehot(
             # -- compute qk --
             qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
             
-            # 更安全的方式限制KV：使用原始的m_mask，然后在qk矩阵计算后再应用kv范围检查
+            # Safer way to limit KV: use original m_mask, then apply kv range check after qk matrix calculation
             qk = tl.where(m_mask, qk, float("-inf"))
             qk += tl.dot(q, k)
             
-            # 使用运行时参数
+            # Use runtime parameters
             is_text_block_cond = block_idx >= text_block_start_runtime
             qk = tl.where(is_text_block_cond, qk + text_amp_runtime, qk)
             
-            # 创建KV掩码并应用
+            # Create KV mask and apply
             kv_valid = cols[None, :] < seqlen
             qk = tl.where(kv_valid, qk, float("-inf"))
             
@@ -241,61 +135,19 @@ def _triton_block_sparse_attn_fwd_kernel_onehot(
     acc /= l_i[:, None]
     tl.store(o_ptrs, acc.to(dtype), mask=m_mask)
 
-def _triton_block_sparse_attention(
-    q,                 # [BATCH, N_HEADS, N_CTX, D_HEAD]
-    k,                 # [BATCH, N_HEADS, N_CTX, D_HEAD]
-    v,                 # [BATCH, N_HEADS, N_CTX, D_HEAD]
-    seqlens,           # [BATCH, ]
-    block_index,       # [BATCH, N_HEADS, cdiv(N_CTX, BLOCK_SIZE_M), MAX_BLOCKS_PRE_ROW]
-    sm_scale,
-    block_size_M=128,
-    block_size_N=128,
-    is_text_block=False,  # 指示当前是否是文本块
-    text_amp=0.0,         # 控制文本块的qk值缩放
-    text_block_start=0,   # 文本块开始的索引
-) -> torch.Tensor:
-    # shape constraints
-    Lq, Lk, Lv = q.shape[-1], k.shape[-1], v.shape[-1]
-    assert Lq == Lk and Lk == Lv
-    assert Lk in {16, 32, 64, 128}
-    o = torch.zeros_like(q)
-    grid = (triton.cdiv(q.shape[2], block_size_M), q.shape[0] * q.shape[1], 1)
-    
-    if q.dtype == torch.bfloat16:
-        dtype = tl.bfloat16
-    else:
-        dtype = tl.float16
-
-    _triton_block_sparse_attn_fwd_kernel[grid](
-        q, k, v, seqlens, sm_scale, text_amp, text_block_start,
-        block_index,
-        o,
-        q.stride(0), q.stride(1), q.stride(2), q.stride(3),
-        k.stride(0), k.stride(1), k.stride(2), k.stride(3),
-        v.stride(0), v.stride(1), v.stride(2), v.stride(3),
-        o.stride(0), o.stride(1), o.stride(2), o.stride(3),
-        q.shape[0], q.shape[1], q.shape[2],
-        block_index.shape[-2], block_index.shape[-1],
-        BLOCK_M=block_size_M, BLOCK_N=block_size_N,
-        BLOCK_DMODEL=Lk,
-        dtype=dtype,
-        is_text_block=is_text_block,
-    )
-
-    return o
 
 def _triton_block_sparse_attention_onehot(
     q,                 # [BATCH, N_HEADS, N_CTX, D_HEAD]
     k,                 # [BATCH, N_HEADS, N_CTX, D_HEAD]
     v,                 # [BATCH, N_HEADS, N_CTX, D_HEAD]
     seqlens,           # [BATCH, ]
-    block_mask,        # [BATCH, N_HEADS, NUM_QUERIES, NUM_BLOCKS] one-hot布尔掩码
+    block_mask,        # [BATCH, N_HEADS, NUM_QUERIES, NUM_BLOCKS] one-hot boolean mask
     sm_scale,
     block_size_M=128,
     block_size_N=128,
-    is_text_block=False,  # 指示当前是否是文本块
-    text_amp=0.0,         # 控制文本块的qk值缩放
-    text_block_start=0,   # 文本块开始的索引
+    is_text_block=False,  # indicates whether this is a text block
+    text_amp=0.0,         # controls scaling of qk values for text blocks
+    text_block_start=0,   # starting index of text blocks
 ) -> torch.Tensor:
     # shape constraints
     Lq, Lk, Lv = q.shape[-1], k.shape[-1], v.shape[-1]
@@ -361,36 +213,36 @@ def _build_block_index_with_importance_optimized(
     num_query_blocks = (context_size + block_size_M - 1) // block_size_M
     device = query.device
     
-    # 1. 池化查询和键
+    # 1. Pool queries and keys
     query_pool = query.reshape((batch_size, num_heads, -1, block_size_M, head_dim)).mean(dim=-2)
     key_pool = key.reshape((batch_size, num_heads, -1, block_size_N, head_dim)).mean(dim=-2)
     
-    # 2. 计算注意力分数 - 使用bmm优化
-    # 重新整形为 [batch_size * num_heads, num_query_blocks, head_dim]
+    # 2. Calculate attention scores - using bmm optimization
+    # Reshape to [batch_size * num_heads, num_query_blocks, head_dim]
     q_bmm = query_pool.reshape(batch_size * num_heads, query_pool.shape[2], head_dim)
     
-    # 重新整形为 [batch_size * num_heads, head_dim, num_key_blocks]
+    # Reshape to [batch_size * num_heads, head_dim, num_key_blocks]
     k_bmm = key_pool.reshape(batch_size * num_heads, key_pool.shape[2], head_dim).transpose(1, 2)
     
-    # 使用bmm进行批量矩阵乘法
+    # Use bmm for batch matrix multiplication
     attention_scores_flat = torch.bmm(q_bmm, k_bmm) * (head_dim ** -0.5)
     
-    # 重新整形回原始维度 [batch_size, num_heads, num_query_blocks, num_key_blocks]
+    # Reshape back to original dimensions [batch_size, num_heads, num_query_blocks, num_key_blocks]
     attention_scores = attention_scores_flat.reshape(
         batch_size, num_heads, query_pool.shape[2], key_pool.shape[2]
     )
     
-    # 3. 只处理非文本块部分的分数
+    # 3. Only process scores for non-text blocks
     normal_scores = attention_scores[:, :, :, :text_start_block]
     
-    # 4. 使用直接softmax计算每个查询的概率分布
+    # 4. Use direct softmax to calculate probability distribution for each query
     probs = torch.softmax(normal_scores, dim=-1)
     
-    # 5. 对每个head的每个query的概率分布排序
+    # 5. Sort probability distribution for each head and query
     sorted_probs, indices = torch.sort(probs, dim=-1, descending=True)
     cumsum_probs = torch.cumsum(sorted_probs, dim=-1)
     
-    # 6. 找到每个(batch, head, query)位置需要的block数量
+    # 6. Find number of blocks needed for each (batch, head, query) position
     mask = cumsum_probs <= prob_threshold
     num_blocks_needed = mask.sum(dim=-1) + 1  # [batch, heads, queries]
     num_blocks_needed = torch.maximum(
@@ -398,13 +250,13 @@ def _build_block_index_with_importance_optimized(
         torch.tensor(top_k, device=device)
     )
     
-    # 创建返回的one-hot张量 [batch_size, num_heads, num_query_blocks, num_blocks]
+    # Create one-hot output tensor [batch_size, num_heads, num_query_blocks, num_blocks]
     one_hot_output = torch.zeros(
         (batch_size, num_heads, num_query_blocks, num_blocks), 
         dtype=torch.bool, device=device
     )
     max_k = indices.shape[-1]
-    # 使用einsum-based indexing for reduced memory:
+    # Use einsum-based indexing for reduced memory:
     batch_idx = torch.arange(batch_size, device=device).view(-1, 1, 1, 1).expand(-1, num_heads, num_query_blocks, max_k)
     head_idx = torch.arange(num_heads, device=device).view(1, -1, 1, 1).expand(batch_size, -1, num_query_blocks, max_k)
     query_idx = torch.arange(num_query_blocks, device=device).view(1, 1, -1, 1).expand(batch_size, num_heads, -1, max_k)
@@ -413,31 +265,31 @@ def _build_block_index_with_importance_optimized(
     # Create mask more efficiently
     valid_mask = k_idx < num_blocks_needed.unsqueeze(-1)
     
-    # 找出所有需要填充的位置
+    # Find all positions that need to be filled
     b_indices = batch_idx[valid_mask]
     h_indices = head_idx[valid_mask]
     q_indices = query_idx[valid_mask]
     
-    # 获取这些位置对应的索引值
+    # Get index values corresponding to these positions
     flat_indices = indices[b_indices, h_indices, q_indices, k_idx[valid_mask]]
     
-    # 使用scatter和索引操作一次性填充
+    # Use scatter and index operations to fill in one go
     one_hot_output[b_indices, h_indices, q_indices, flat_indices] = True
     
     
-    # 添加物理邻居 - 直接取并集
+    # Add physical neighbors - directly take union
     if block_neighbor_list is not None:
-        # 确保block_neighbor_list在正确的设备上
+        # Ensure block_neighbor_list is on the correct device
         if block_neighbor_list.device != device:
             block_neighbor_list = block_neighbor_list.to(device)
         
-        # 确保尺寸匹配并转换为布尔型
+        # Ensure dimensions match and convert to boolean
         neighbor_mask = block_neighbor_list[:num_query_blocks, :text_start_block].bool()
         
-        # 扩展到[batch, heads, q_blocks, blocks]维度并与现有输出取并集
+        # Expand to [batch, heads, q_blocks, blocks] dimension and take union with existing output
         one_hot_output[:, :, :neighbor_mask.shape[0], :text_start_block] |= neighbor_mask.unsqueeze(0).unsqueeze(0)
     
-    # 添加文本块 - 所有批次、所有头、所有查询块都能看到所有文本块
+    # Add text blocks - all batches, all heads, all query blocks can see all text blocks
     if text_blocks > 0 and text_start_block is not None:
         one_hot_output[:, :, :, text_start_block:min(text_start_block+text_blocks, num_blocks)] = True
 
@@ -456,16 +308,16 @@ def block_sparse_attention_combined(
     max_seqlen_q: int = None,
     max_seqlen_kv: int = None,
     text_blocks: int = 2,  # Number of text blocks at the end
-    text_amp: float = 1.0,  # 控制文本块的qk值缩放
-    prob_threshold: float = 0.5,  # 新参数
+    text_amp: float = 1.0,  # controls scaling of qk values for text blocks
+    prob_threshold: float = 0.5,  # new parameter
     block_neighbor_list: torch.Tensor = None,
     shape_xfuse: bool = False,
 ):
     """
-    组合注意力处理普通块和文本块:
-    1. 普通块基于重要性选择top-k个块（没有因果约束）
-    2. 文本块获得全注意力（可以看到所有块）
-    3. 所有普通块都能看到所有文本块
+    Combined attention processing for normal blocks and text blocks:
+    1. Normal blocks select top-k blocks based on importance (without causal constraints)
+    2. Text blocks get full attention (can see all blocks)
+    3. All normal blocks can see all text blocks
     """
     query = query.transpose(1, 2)
     key = key.transpose(1, 2)

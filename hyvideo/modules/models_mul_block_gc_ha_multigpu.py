@@ -173,13 +173,8 @@ class MMDoubleStreamBlock(nn.Module):
         curve_sel: list = None,
         p_remain_rates: float = 0.5,
         txt_block_num: int = 2,
-        ULYSSES_DEGREE: int = 1,
-        RING_DEGREE: int = 1,
         per_block_token: int = 128,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-
-        # per_block_token = first_level_block_size[0] * first_level_block_size[1] * first_level_block_size[2]
-
         (
             img_mod1_shift,
             img_mod1_scale,
@@ -236,9 +231,6 @@ class MMDoubleStreamBlock(nn.Module):
         if curve_sel is not None or not isinstance(curve_sel, int):
             current_curve_sel = random.choice(curve_sel)
             linear_to_hilbert, hilbert_order, block_neighbor_list = current_curve_sel
-            # img_q = img_q[:, hilbert_order]
-            # img_k = img_k[:, hilbert_order]
-            # img_v = img_v[:, hilbert_order]
         else:
             block_neighbor_list = None
         
@@ -248,7 +240,7 @@ class MMDoubleStreamBlock(nn.Module):
         k = torch.cat((img_k, txt_k), dim=1)
         v = torch.cat((img_v, txt_v), dim=1)
         select_block_num = int((1-sa_drop_rate)* img_block_num)
-        # block_mask_down = torch.ones(1, 100000, 500).bool().to(q.device)
+
         assert (
             cu_seqlens_q.shape[0] == 2 * img.shape[0] + 1
         ), f"cu_seqlens_q.shape:{cu_seqlens_q.shape}, img.shape[0]:{img.shape[0]}"
@@ -300,8 +292,6 @@ class MMDoubleStreamBlock(nn.Module):
 
         img_attn, txt_attn = attn[:, : img.shape[1]], attn[:, img.shape[1] :]
 
-        # if curve_sel is not None:
-        #     img_attn = img_attn[:, linear_to_hilbert]
             
         # Calculate the img bloks.
         img = img + apply_gate(self.img_attn_proj(img_attn), gate=img_mod1_gate)
@@ -414,13 +404,8 @@ class MMSingleStreamBlock(nn.Module):
         curve_sel: list = None,
         p_remain_rates: float = 0.5,
         txt_block_num: int = 2,
-        first_level_block_size: list = [4, 8, 4],
-        hwt: list = [44, 80, 32], # [44, 80, 32]
-        ULYSSES_DEGREE: int = 1,
-        global_factor: float = 0.0,
         per_block_token: int = 128,
     ) -> torch.Tensor:
-        # per_block_token = first_level_block_size[0] * first_level_block_size[1] * first_level_block_size[2]
         mod_shift, mod_scale, mod_gate = self.modulation(vec).chunk(3, dim=-1)
         x_mod = modulate(self.pre_norm(x), shift=mod_shift, scale=mod_scale)
 
@@ -449,10 +434,9 @@ class MMSingleStreamBlock(nn.Module):
             q = torch.cat((img_q, txt_q), dim=1)
             k = torch.cat((img_k, txt_k), dim=1)
 
-        # JULIAN: shuffle the script here.
         if curve_sel is not None or not isinstance(curve_sel, int):
             current_curve_sel = random.choice(curve_sel)
-            linear_to_hilbert, hilbert_order, block_neighbor_list = current_curve_sel
+            _, _, block_neighbor_list = current_curve_sel
             # debug: don't know why we add this line and the code can run without nan, because of continguous?
             img_v, txt_v = v[:, :-txt_len, :, :], v[:, -txt_len:, :, :]
             v = torch.cat((img_v, txt_v), dim=1)
@@ -465,11 +449,6 @@ class MMSingleStreamBlock(nn.Module):
         ), f"cu_seqlens_q.shape:{cu_seqlens_q.shape}, x.shape[0]:{x.shape[0]}"
         
         # # -------------------------------------------------------------------------------------
-        # first level attention
-        t0 = time.time()
-        # rearrange 
-        h, w, t = hwt[0], hwt[1], hwt[2]
-        w = w // ULYSSES_DEGREE # for multi-GPU
 
         img_block_num = img_k.shape[1] // per_block_token
         select_block_num = int((1-sa_drop_rate)*img_block_num)
@@ -518,12 +497,6 @@ class MMSingleStreamBlock(nn.Module):
         # attention computation end
 
         output = self.linear2(torch.cat((attn, self.mlp_act(mlp)), 2))
-        # check whether output is nan
-        if torch.isnan(output).any():
-            print("output is nan")
-            print(output)
-            print(attn)
-            print(mlp)
         return x + apply_gate(output, gate=mod_gate)
 
 

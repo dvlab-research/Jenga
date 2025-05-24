@@ -19,22 +19,22 @@ from hyvideo.modules.fp8_optimization import convert_fp8_linear
 from hyvideo.diffusion.schedulers import FlowMatchDiscreteScheduler
 from hyvideo.diffusion.pipelines import HunyuanVideoPipeline
 
-# try:
-import xfuser
-from xfuser.core.distributed import (
-    get_sequence_parallel_world_size,
-    get_sequence_parallel_rank,
-    get_sp_group,
-    initialize_model_parallel,
-    init_distributed_environment
-)
-# except:
-#     xfuser = None
-#     get_sequence_parallel_world_size = None
-#     get_sequence_parallel_rank = None
-#     get_sp_group = None
-#     initialize_model_parallel = None
-#     init_distributed_environment = None
+try:
+    import xfuser
+    from xfuser.core.distributed import (
+        get_sequence_parallel_world_size,
+        get_sequence_parallel_rank,
+        get_sp_group,
+        initialize_model_parallel,
+        init_distributed_environment
+    )
+except:
+    xfuser = None
+    get_sequence_parallel_world_size = None
+    get_sequence_parallel_rank = None
+    get_sp_group = None
+    initialize_model_parallel = None
+    init_distributed_environment = None
 
 
 def parallelize_transformer(pipe):
@@ -86,8 +86,6 @@ def parallelize_transformer(pipe):
 
         for block in transformer.double_blocks + transformer.single_blocks:
             block.hybrid_seq_parallel_attn = xFuserLongContextAttention()
-
-        # print(x.shape, t.shape, text_states.shape, text_mask.shape, text_states_2.shape, freqs_cos.shape, freqs_sin.shape, guidance.shape)
 
         output = original_forward(
             x,
