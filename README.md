@@ -1,4 +1,3 @@
-# Jenga 
 <p align="center">
   <img src="./assets/title.png" width="80%" max-width="600px">
 </p>
@@ -7,9 +6,10 @@
 <div align="center">
   <a href="https://julianjuaner.github.io/projects/jenga"><img src="https://img.shields.io/static/v1?label=Project%20Page&message=Web&color=orange"></a> &ensp;
   <a href="https://arxiv.org/abs/2505.16864"><img src="https://img.shields.io/static/v1?label=arXiv&message=Web&color=brown"></a> &ensp;
+  <a href="https://huggingface.co/papers/2505.16864"><img src="https://img.shields.io/static/v1?label=HuggingFaceDaliy&message=Web&color=yellow"></a> &ensp;
 </div>
 
-> This is the offical implementation of the paper [**Training-Free Efficient Video Generation via Dynamic Token Carving**](https://arxiv.org/abs/2505.16864) <be>
+> The offical implementation of the paper [**Training-Free Efficient Video Generation via Dynamic Token Carving**](https://arxiv.org/abs/2505.16864) <be>
 ## Overview
 Jenga can generate videos with 4.68-10.35 times faster on single GPU.
 <p align="center">
@@ -27,7 +27,7 @@ Please visit the [project page](https://julianjuaner.github.io/projects/jenga) f
 - Model Adaptation
   - [x] HunyuanVideo Inference 
   - [x] Multi-gpus Parallel inference (Faster inference speed on more gpus)
-  - [ ] HunyuanVideo-I2V Inference
+  - [x] HunyuanVideo-I2V Inference
   - [ ] Wan2.1
 - Engineering Optimization
   - [ ] Quantization
@@ -147,6 +147,42 @@ Then run the script
 ```shell
 bash ./scripts/accvideo_jenga.sh
 ```
+
+### Inference on HunyuanVideo-I2V
+First, download HunyuanVideo-I2V models following the [instruction]()
+
+Here we support single prompt inference and json-like input (for example, VBench-like input)
+```shell
+bash ./scripts/hyi2v_jenga_base.sh
+```
+If you want to input json files for batched inference, please format your file as following:
+```json
+[
+  {
+        "prompt_en": "a close up of a blue and orange liquid, camera pans left",
+        "dimension": [
+            "camera_motion"
+        ],
+        "image_type": "abstract",
+        "image_name": "a close up of a blue and orange liquid.jpg",
+        "id": "0001"
+    },
+    {
+        "prompt_en": "a close up of a blue and orange liquid, camera pans right",
+        "dimension": [
+            "camera_motion"
+        ],
+        "image_type": "abstract",
+        "image_name": "a close up of a blue and orange liquid.jpg",
+        "id": "0002"
+    },
+]
+```
+We test on the default case: 1088x832x125f, 113K tokens, following is a reference DiT time:
+
+|HunyuanVideo| Jenga-Base | 
+| ---- | ---- | 
+| 1590s | 323s (4.92x)|
 
 ## Method Overview
 The general idea of Jenga is to reduce token interactions in Diffusion Transformers (DiTs). Following is an overview.

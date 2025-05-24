@@ -205,7 +205,6 @@ def _build_block_index_with_importance_optimized(
     num_blocks: int = None,        
     prob_threshold: float = 0.7,   
     text_blocks: int = 2,          
-    debug_print: bool = False,
     block_neighbor_list: torch.Tensor = None,  # [block_num, block_num] one-hot tensor
 ):
     cur_time = time.time()
@@ -357,24 +356,24 @@ def block_sparse_attention_combined(
             block_neighbor_list=block_neighbor_list
         )
         
-        # 直接使用one-hot版本的sparse attention
+        # direct use one-hot version sparse attention
         output_normal = _triton_block_sparse_attention_onehot(
             query_normal, key, value, seqlens, 
             block_relation_onehot, sm_scale, block_size_M, block_size_N,
-            is_text_block=False,  # 这不是文本块
-            text_amp=text_amp,         # 控制文本块的qk值缩放
-            text_block_start=normal_blocks,   # 文本块开始的索引
+            is_text_block=False,  # this is not a text block
+            text_amp=text_amp,         # text_amp
+            text_block_start=normal_blocks,   # text block start index
         )
     else:
         output_normal = torch.empty(0, device=query.device)
     
-    # 2. 处理文本块（完全注意力到所有块）
+    # 2. process text blocks (full attention to all blocks)
     if text_blocks > 0:
-        # 提取文本块
+        # extract text blocks
         query_text = query[:, :, normal_tokens:, :]
-        key_text = key  # 可以看到所有key
+        key_text = key  # can see all keys
         value_text = value
-        # 使用Flash Attention
+        # use Flash Attention
         output_text = flash_attn_func(
             query_text.permute(0, 2, 1, 3), key_text.permute(0, 2, 1, 3), value_text.permute(0, 2, 1, 3),
             causal=False, softmax_scale=sm_scale
@@ -382,7 +381,7 @@ def block_sparse_attention_combined(
     else:
         output_text = torch.empty(0, device=query.device)
     
-    # 合并输出
+    # merge outputs
     if normal_blocks > 0 and text_blocks > 0:
         output = torch.cat([output_normal, output_text], dim=2)
     elif normal_blocks > 0:
@@ -393,10 +392,10 @@ def block_sparse_attention_combined(
     if not shape_xfuse:
         output = output.permute(0, 2, 1, 3).reshape(batch_size, context_size, -1)
         return output
-    # 移除填充
+    # remove padding
     return output.permute(0, 2, 1, 3)
 
-# 保持原始函数作为后向兼容性的别名
+# keep the original function as an alias for backward compatibility
 def block_sparse_attention(
     query: torch.Tensor,
     key: torch.Tensor,     
@@ -415,7 +414,7 @@ def block_sparse_attention(
     p_remain_rates: float = 0.5,
 ):
     """
-    围绕block_sparse_attention_combined的后向兼容包装器。
+    backward compatible wrapper around block_sparse_attention_combined.
     """
     return block_sparse_attention_combined(
         query, key, value, top_k, block_size_M, block_size_N,

@@ -1,0 +1,6 @@
+{
+  "video_path": "/path/to/video.mp4",
+  "raw_caption": {
+    "long caption": "Detailed description text of the video"
+  }
+}
