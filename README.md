@@ -149,7 +149,7 @@ bash ./scripts/accvideo_jenga.sh
 ```
 
 ### Inference on HunyuanVideo-I2V
-First, download HunyuanVideo-I2V models following the [instruction]()
+First, download HunyuanVideo-I2V models following the [instruction](./utils/model_down_hyi2v.md)
 
 Here we support single prompt inference and json-like input (for example, VBench-like input)
 ```shell
