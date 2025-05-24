@@ -1,8 +1,8 @@
 # Download Pretrained Models
 
-All models are stored in `HunyuanVideo/ckpts` by default, and the file structure is as follows
+All models are stored in `Jenga/ckpts` by default, and the file structure is as follows
 ```shell
-HunyuanVideo
+Jenga
   ├──ckpts
   │  ├──README.md
   │  ├──hunyuan-video-t2v-720p
@@ -27,7 +27,7 @@ Then download the model using the following commands:
 
 ```shell
 # Switch to the directory named 'HunyuanVideo'
-cd HunyuanVideo
+cd Jenga
 # Use the huggingface-cli tool to download HunyuanVideo model in HunyuanVideo/ckpts dir.
 # The download time may vary from 10 minutes to 1 hour depending on network conditions.
 huggingface-cli download tencent/HunyuanVideo --local-dir ./ckpts
@@ -65,13 +65,13 @@ HunyuanVideo uses an MLLM model and a CLIP model as text encoder.
 HunyuanVideo supports different MLLMs (including HunyuanMLLM and open-source MLLM models). At this stage, we have not yet released HunyuanMLLM. We recommend the user in community to use [llava-llama-3-8b](https://huggingface.co/xtuner/llava-llama-3-8b-v1_1-transformers) provided by [Xtuer](https://huggingface.co/xtuner), which can be downloaded by the following command
 
 ```shell
-cd HunyuanVideo/ckpts
+cd Jenga/ckpts
 huggingface-cli download xtuner/llava-llama-3-8b-v1_1-transformers --local-dir ./llava-llama-3-8b-v1_1-transformers
 ```
 
 In order to save GPU memory resources for model loading, we separate the language model parts of `llava-llama-3-8b-v1_1-transformers` into `text_encoder`.
 ```
-cd HunyuanVideo
+cd Jenga
 python hyvideo/utils/preprocess_text_encoder_tokenizer_utils.py --input_dir ckpts/llava-llama-3-8b-v1_1-transformers --output_dir ckpts/text_encoder
 ```
 
@@ -80,6 +80,6 @@ python hyvideo/utils/preprocess_text_encoder_tokenizer_utils.py --input_dir ckpt
 We use [CLIP](https://huggingface.co/openai/clip-vit-large-patch14) provided by [OpenAI](https://openai.com) as another text encoder, users in the community can download this model by the following command
 
 ```
-cd HunyuanVideo/ckpts
+cd Jenga/ckpts
 huggingface-cli download openai/clip-vit-large-patch14 --local-dir ./text_encoder_2
 ```
