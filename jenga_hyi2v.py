@@ -40,6 +40,8 @@ def build_multi_curve(latent_time, latent_height, latent_width, res_rate_list,
         latent_time_ = int(latent_time)
         latent_height_ = int(latent_height * res_rate)
         latent_width_ = int(latent_width * res_rate)
+        if (latent_height_ * latent_width_) % 4 != 0:
+            raise ValueError(f"latent_height_ * latent_width_ must be divisible by 4, but got {latent_height_ * latent_width_}")
         LINEAR_TO_HILBERT, HILBERT_ORDER = gilbert_mapping(latent_time_, latent_height_, latent_width_)
         block_neighbor_list = gilbert_block_neighbor_mapping(latent_time_, latent_height_, latent_width_)
         curve_sel.append([torch.tensor(LINEAR_TO_HILBERT, dtype=torch.long), torch.tensor(HILBERT_ORDER, dtype=torch.long), block_neighbor_list])
