@@ -184,6 +184,9 @@ We test on the default case: 1088x832x125f, 113K tokens, following is a referenc
 | ---- | ---- | 
 | 1590s | 323s (4.92x)|
 
+### Inference on Wan2.1
+
+
 ## Method Overview
 The general idea of Jenga is to reduce token interactions in Diffusion Transformers (DiTs). Following is an overview.
 <p align="center">
