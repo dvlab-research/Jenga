@@ -28,9 +28,10 @@ Please visit the [project page](https://julianjuaner.github.io/projects/jenga) f
   - [x] HunyuanVideo Inference 
   - [x] Multi-gpus Parallel inference (Faster inference speed on more gpus)
   - [x] HunyuanVideo-I2V Inference
-  - [ ] Wan2.1
+  - [x] Wan2.1-1.3B
+  - [ ] Wan2.1-14B (I2V, T2V)
 - Engineering Optimization
-  - [ ] Quantization
+  - [ ] Quantization (sage-attention)
   - [ ] ComfyUI
   - [ ] RoPE & Norm Kernel
   - [ ] FA3 Adaptation
