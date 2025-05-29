@@ -50,7 +50,7 @@ def _triton_block_sparse_attn_fwd_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_DMODEL: tl.constexpr,
     dtype: tl.constexpr,
-    is_text_block: tl.constexpr,  # 表示当前是否是文本块
+    is_text_block: tl.constexpr,  # Indicates whether current block is a text block
 ):
     start_m = tl.program_id(0)
     off_hz = tl.program_id(1)
@@ -89,7 +89,9 @@ def _triton_block_sparse_attn_fwd_kernel(
     # loop over k, v and update accumulator
     m_mask = offs_m[:, None] < seqlen
     
-    # 为文本块使用最大块数，为普通块使用top-k
+    # For text blocks - use maximum number of blocks, for normal blocks use top-k
+    # Text block - use all available blocks (full attention)
+    # Normal block - use all available blocks (top-k blocks based on importance)
     if is_text_block:
         # 文本块 - 使用所有可用块 (full attention)
         block_count = MAX_BLOCKS_PRE_ROW                                                 
@@ -111,15 +113,15 @@ def _triton_block_sparse_attn_fwd_kernel(
             # -- compute qk --
             qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
             
-            # 更安全的方式限制KV：使用原始的m_mask，然后在qk矩阵计算后再应用kv范围检查
+            # Safer way to limit KV: use original m_mask, then apply kv range check after qk matrix calculation
             qk = tl.where(m_mask, qk, float("-inf"))
             qk += tl.dot(q, k)
             
-            # 使用运行时参数
+            # Use runtime parameters
             is_text_block_cond = real_block_idx >= text_block_start_runtime
             qk = tl.where(is_text_block_cond, qk + text_amp_runtime, qk)
             
-            # 创建KV掩码并应用 - 这里注意用法，避免维度不匹配问题
+            # Create and apply KV mask - note usage to avoid dimension mismatch issues
             kv_valid = cols[None, :] < seqlen
             qk = tl.where(kv_valid, qk, float("-inf"))
             
@@ -150,17 +152,17 @@ def _triton_block_sparse_attn_fwd_kernel_onehot(
     stride_kz, stride_kh, stride_kn, stride_kk,
     stride_vz, stride_vh, stride_vn, stride_vk,
     stride_oz, stride_oh, stride_om, stride_ok,
-    stride_bz, stride_bm, stride_bn,  # 额外的block_mask的步长
+    stride_bz, stride_bm, stride_bn,  # Additional strides for block_mask
     Z, H, N_CTX,
-    NUM_BLOCKS,  # 总块数
+    NUM_BLOCKS,  # Total number of blocks
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_DMODEL: tl.constexpr,
     dtype: tl.constexpr,
-    is_text_block: tl.constexpr,  # 表示当前是否是文本块
+    is_text_block: tl.constexpr,  # Indicates whether current block is a text block
 ):
-    start_m = tl.program_id(0)  # 当前处理的query块
-    off_hz = tl.program_id(1)   # batch * head索引
+    start_m = tl.program_id(0)  # Current query block being processed
+    off_hz = tl.program_id(1)   # batch * head index
 
     seqlen = tl.load(seqlens + off_hz // H)
     if start_m * BLOCK_M >= seqlen:
@@ -179,7 +181,7 @@ def _triton_block_sparse_attn_fwd_kernel_onehot(
     v_ptrs = V + kv_offset + offs_d[None, :] * stride_vk
     o_ptrs = Out + qo_offset + offs_m[:, None] * stride_om + offs_d[None, :] * stride_ok
 
-    # 当前batch*head和query块对应的block mask行
+    # Current block mask row corresponding to batch*head and query block
     mask_ptr = block_mask + off_hz * stride_bz + start_m * stride_bm
 
     # initialize pointer to m and l
@@ -196,7 +198,8 @@ def _triton_block_sparse_attn_fwd_kernel_onehot(
     # loop over k, v and update accumulator
     m_mask = offs_m[:, None] < seqlen
     
-    # 遍历所有块 (使用one-hot mask)
+    # Iterate through all blocks (using one-hot mask)
+    # Check if current block is marked in one-hot mask
     for block_idx in range(NUM_BLOCKS):
         # 检查当前块是否在one-hot mask中被标记
         is_valid_block = tl.load(mask_ptr + block_idx * stride_bn)
@@ -211,15 +214,15 @@ def _triton_block_sparse_attn_fwd_kernel_onehot(
             # -- compute qk --
             qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
             
-            # 更安全的方式限制KV：使用原始的m_mask，然后在qk矩阵计算后再应用kv范围检查
+            # Safer way to limit KV: use original m_mask, then apply kv range check after qk matrix calculation
             qk = tl.where(m_mask, qk, float("-inf"))
             qk += tl.dot(q, k)
             
-            # 使用运行时参数
+            # Use runtime parameters
             is_text_block_cond = block_idx >= text_block_start_runtime
             qk = tl.where(is_text_block_cond, qk + text_amp_runtime, qk)
             
-            # 创建KV掩码并应用
+            # Create and apply KV mask - note usage to avoid dimension mismatch issues
             kv_valid = cols[None, :] < seqlen
             qk = tl.where(kv_valid, qk, float("-inf"))
             
@@ -246,13 +249,13 @@ def _triton_block_sparse_attention_onehot(
     k,                 # [BATCH, N_HEADS, N_CTX, D_HEAD]
     v,                 # [BATCH, N_HEADS, N_CTX, D_HEAD]
     seqlens,           # [BATCH, ]
-    block_mask,        # [BATCH, N_HEADS, NUM_QUERIES, NUM_BLOCKS] one-hot布尔掩码
+    block_mask,        # [BATCH, N_HEADS, NUM_QUERIES, NUM_BLOCKS] one-hot boolean mask
     sm_scale,
     block_size_M=128,
     block_size_N=128,
-    is_text_block=False,  # 指示当前是否是文本块
-    text_amp=0.0,         # 控制文本块的qk值缩放
-    text_block_start=0,   # 文本块开始的索引
+    is_text_block=False,  # Indicates whether current block is a text block
+    text_amp=0.0,         # Controls qk value scaling for text blocks
+    text_block_start=0,   # Starting index of text blocks
 ) -> torch.Tensor:
     # shape constraints
     Lq, Lk, Lv = q.shape[-1], k.shape[-1], v.shape[-1]
@@ -264,7 +267,7 @@ def _triton_block_sparse_attention_onehot(
     num_query_blocks = block_mask.shape[-2]
     num_blocks = block_mask.shape[-1]
     
-    # 将block_mask重塑为[batch*heads, queries, blocks]以适应triton kernel
+    # Reshape block_mask to [batch*heads, queries, blocks] to fit triton kernel
     block_mask_reshaped = block_mask.reshape(batch_size * n_heads, num_query_blocks, num_blocks)
     
     grid = (num_query_blocks, batch_size * n_heads, 1)
@@ -413,16 +416,16 @@ def block_sparse_attention_combined(
     max_seqlen_q: int = None,
     max_seqlen_kv: int = None,
     text_blocks: int = 0,  # Number of text blocks at the end
-    text_amp: float = 1.0,  # 控制文本块的qk值缩放
-    prob_threshold: float = 0.5,  # 新参数
+    text_amp: float = 1.0,  # Controls qk value scaling for text blocks
+    prob_threshold: float = 0.5,  # New parameter
     block_neighbor_list: torch.Tensor = None,
     shape_xfuse: bool = False,
 ):
     """
-    组合注意力处理普通块和文本块:
-    1. 普通块基于重要性选择top-k个块（没有因果约束）
-    2. 文本块获得全注意力（可以看到所有块）
-    3. 所有普通块都能看到所有文本块
+    Combined attention processing for normal blocks and text blocks:
+    1. Normal blocks select top-k blocks based on importance (no causal constraint)
+    2. Text blocks get full attention (can see all blocks)
+    3. All normal blocks can see all text blocks
     """
     query = query.transpose(1, 2)
     key = key.transpose(1, 2)
@@ -430,8 +433,7 @@ def block_sparse_attention_combined(
     batch_size, num_heads, context_size, head_dim = query.shape
     out_dtype = query.dtype
     
-    # 处理可变长度序列
-
+    # Handle variable length sequences
     pad = block_size_M - (context_size % block_size_M) if context_size % block_size_M != 0 else 0
     query = torch.nn.functional.pad(query, [0, 0, 0, pad, 0, 0, 0, 0])
     key = torch.nn.functional.pad(key, [0, 0, 0, pad, 0, 0, 0, 0])

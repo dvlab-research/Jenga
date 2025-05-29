@@ -183,17 +183,14 @@ def t2v_generate(self,
             arg_null = {'context': context_null, 'seq_len': seq_len}
             
             # for unconditional branch, we use a larger drop rate.
-            sa_drop_rate_aggressive = math.sqrt(args.sa_drop_rate)
 
             stage_changed = False
             for idx, t in enumerate(tqdm(timesteps)):
 
                 if idx <= 25:
                     cur_sa_drop_rate = args.sa_drop_rate
-                    cur_sa_drop_rate_aggressive = cur_sa_drop_rate # math.sqrt(cur_sa_drop_rate)
                 else:
                     cur_sa_drop_rate = args.sa_drop_rate
-                    cur_sa_drop_rate_aggressive = cur_sa_drop_rate # math.sqrt(args.sa_drop_rate)
 
                 latent_model_input = latents
                 timestep = [t]
@@ -202,13 +199,13 @@ def t2v_generate(self,
                 # drop_rate warmup.
                 step_normed = idx / (len(timesteps) - 1) * 4
                 cur_sa_drop_rate = min(cur_sa_drop_rate, (step_normed) * cur_sa_drop_rate)
-                cur_sa_drop_rate_aggressive = min(cur_sa_drop_rate_aggressive,  cur_sa_drop_rate)
+                
 
                 self.model.to(self.device)
                 noise_pred_cond = self.model(
                     latent_model_input, t=timestep, sa_drop_rate=cur_sa_drop_rate, **arg_c)[0]
                 noise_pred_uncond = self.model(
-                    latent_model_input, t=timestep, sa_drop_rate=cur_sa_drop_rate_aggressive, **arg_null)[0]
+                    latent_model_input, t=timestep, sa_drop_rate=cur_sa_drop_rate, **arg_null)[0]
 
                 noise_pred = noise_pred_uncond + guide_scale * (
                     noise_pred_cond - noise_pred_uncond)
@@ -778,7 +775,7 @@ def _parse_args():
     parser.add_argument(
         "--prompt_extend_target_lang",
         type=str,
-        default="ch",
+        default="en",
         choices=["ch", "en"],
         help="The target language of prompt extend.")
     parser.add_argument(
@@ -842,7 +839,7 @@ def _parse_args():
     parser.add_argument(
         "--p_remain_rates",
         type=float,
-        default=0.8,
+        default=0.0,
         help="The p_remain_rates of the self-attention.")
     parser.add_argument(
         "--remain_list",
