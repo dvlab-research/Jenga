@@ -22,6 +22,8 @@ Please visit the [project page](https://julianjuaner.github.io/projects/jenga) f
   <img src="./assets/teaser_video.gif"  width=100%>
 </p>
 
+---------
+
 ## Open-source Plan
 
 - Model Adaptation
@@ -37,7 +39,9 @@ Please visit the [project page](https://julianjuaner.github.io/projects/jenga) f
   - [ ] FA3 Adaptation
 
 ## Guidance
+
 ### Inference on HunyuanVideo
+
 #### Enviornment
 Following the installation as in HunyuanVideo:
 ```shell
@@ -140,7 +144,7 @@ Due to the constant time of VAE, we recommend allocating each prompt to a single
 ```shell
 bash ./scripts/hyvideo_batched_sample.sh
 ```
-
+---------
 ### Inference on AccVideo (Distilled Models)
 The general pipeline is the same, just download weight from [Huggingface](https://huggingface.co/aejion/AccVideo) to `ckpts/AccVideo`
 
@@ -148,7 +152,7 @@ Then run the script
 ```shell
 bash ./scripts/accvideo_jenga.sh
 ```
-
+---------
 ### Inference on HunyuanVideo-I2V
 First, download HunyuanVideo-I2V models following the [instruction](./utils/model_down_hyi2v.md)
 
@@ -185,10 +189,12 @@ We test on the default case: 1088x832x125f, 113K tokens, following is a referenc
 | ---- | ---- | 
 | 1590s | 323s (4.92x)|
 
+---------
 ### Inference on Wan2.1
 Currently, we support Wan2.1-1.3B. We are working on the 14B inference.
+We use the same environment as in Hunyuan, please update enviorment if you find trouble in env setup, please refer to the official guideline in [Wan2.1](https://github.com/Wan-Video/Wan2.1).
 
-First, download Wan2.1 models from HuggingFace [Wan2.1 1.3B](https://huggingface.co/Wan-AI/Wan2.1-T2V-1.3B)
+First, download Wan2.1 models from HuggingFace [Wan2.1 1.3B](https://huggingface.co/Wan-AI/Wan2.1-T2V-1.3B) to `./ckpts`
 
 We support Jenga-Base and Jenga-Turbo, you may also adjust the `--teacache_thresh` or use **complex rewritten prompts** to resolve possible temporal flickering problem.
 
@@ -231,15 +237,14 @@ The general idea of Jenga is to reduce token interactions in Diffusion Transform
 If you find [Jenga](https://arxiv.org/abs/2505.16864) useful for your research and applications, please cite using this BibTeX:
 
 ```BibTeX
-@article{zhang2025trainingfreeefficientvideogeneration,
-    title={Training-Free Efficient Video Generation via Dynamic Token Carving},
-    author={Yuechen Zhang and Jinbo Xing and Bin Xia and Shaoteng Liu and Bohao Peng and Xin Tao and Pengfei Wan and Eric Lo and Jiaya Jia},
-    journal={arXiv preprint arXiv:2505.16864},
-    year={2025}
+@article{zhang2025training,
+  title={Training-Free Efficient Video Generation via Dynamic Token Carving},
+  author={Zhang, Yuechen and Xing, Jinbo and Xia, Bin and Liu, Shaoteng and Peng, Bohao and Tao, Xin and Wan, Pengfei and Lo, Eric and Jia, Jiaya},
+  journal={arXiv preprint arXiv:2505.16864},
+  year={2025}
 }
 ```
 
 ## Acknowledgements
 
-We would like to thank the contributors to the [HunyuanVideo](https://github.com/Tencent/HunyuanVideo), [HunyuanVideo-I2V](https://github.com/Tencent-Hunyuan/HunyuanVideo-I2V), [Wan2.1](https://github.com/Wan-Video/Wan2.1), [AccVideo](https://github.com/aejion/AccVideo), [MInference](https://github.com/microsoft/MInference), [Gilbert](https://github.com/jakubcerveny/gilbert) and [HuggingFace](https://huggingface.co) repositories, for their open research and exploration.
-Additionally, we also thank the Tencent Hunyuan Multimodal team for their help with the text encoder. 
+We would like to thank the contributors to the [HunyuanVideo](https://github.com/Tencent/HunyuanVideo), [HunyuanVideo-I2V](https://github.com/Tencent-Hunyuan/HunyuanVideo-I2V), [Wan2.1](https://github.com/Wan-Video/Wan2.1), [AccVideo](https://github.com/aejion/AccVideo), [MInference](https://github.com/microsoft/MInference), [Gilbert](https://github.com/jakubcerveny/gilbert), [TeaCache](https://github.com/ali-vilab/TeaCache) and [HuggingFace](https://huggingface.co) repositories, for their open research and exploration.
