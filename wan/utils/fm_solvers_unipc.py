@@ -636,7 +636,6 @@ class FlowUniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         # This way we can ensure we don't accidentally skip a sigma in
         # case we start in the middle of the denoising schedule (e.g. for image-to-image)
         pos = 1 if len(indices) > 1 else 0
-
         return indices[pos].item()
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._init_step_index

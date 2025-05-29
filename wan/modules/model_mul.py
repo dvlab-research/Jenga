@@ -150,7 +150,7 @@ class WanSelfAttention(nn.Module):
 
         q, k, v = qkv_fn(x)
 
-        if sa_drop_rate == 0.0 or self.index >= self.num_layers:
+        if self.index >= self.num_layers - 3 or sa_drop_rate == 0.0:
             x = flash_attention(
                 q=rope_apply(q, grid_sizes, freqs, freq_remap),
                 k=rope_apply(k, grid_sizes, freqs, freq_remap),

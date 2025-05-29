@@ -164,13 +164,14 @@ def t2v_generate(self,
                     sigmas=sampling_sigmas)
             else:
                 raise NotImplementedError("Unsupported solver.")
-
+            
+            res_rate = 0.75 if args.enable_turbo else 1.0
             noise_down_sample = [
                 torch.randn(
                     target_shape[0],
                     target_shape[1],
-                    int(target_shape[2] * 1.0)//2*2,
-                    int(target_shape[3] * 1.0)//2*2,
+                    int(target_shape[2] * res_rate)//2*2,
+                    int(target_shape[3] * res_rate)//2*2,
                     dtype=torch.float32,
                     device=self.device,
                     generator=seed_g)
@@ -185,12 +186,15 @@ def t2v_generate(self,
             # for unconditional branch, we use a larger drop rate.
 
             stage_changed = False
-            for idx, t in enumerate(tqdm(timesteps)):
-
+            for idx, _ in enumerate(tqdm(timesteps)):
+                t = timesteps[idx]
                 if idx <= 25:
-                    cur_sa_drop_rate = args.sa_drop_rate
+                    cur_sa_drop_rate = args.sa_drop_rates[0]
                 else:
-                    cur_sa_drop_rate = args.sa_drop_rate
+                    if len(args.sa_drop_rates) == 1:
+                        cur_sa_drop_rate = args.sa_drop_rates[0]
+                    else:
+                        cur_sa_drop_rate = args.sa_drop_rates[1]
 
                 latent_model_input = latents
                 timestep = [t]
@@ -210,7 +214,7 @@ def t2v_generate(self,
                 noise_pred = noise_pred_uncond + guide_scale * (
                     noise_pred_cond - noise_pred_uncond)
                 
-                if idx >= 25 and not stage_changed: # and not self.model.use_cache:
+                if idx >= 25 and not stage_changed and args.enable_turbo: # and not self.model.use_cache:
                     stage_changed = True
                     clean_noise = sample_scheduler.step_to_zero(
                         noise_pred.unsqueeze(0),
@@ -230,13 +234,16 @@ def t2v_generate(self,
                     latents = [noisy_sample.squeeze(0)]
                     
                     sample_scheduler.disable_corrector = [24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37]
+                    sample_scheduler.set_timesteps(
+                        sampling_steps, device=self.device, shift=shift+2)
+                    timesteps = sample_scheduler.timesteps
                     self.model.__class__.linear_to_hilbert = self.model.__class__.curve_sels[1][0][0]
                     self.model.__class__.hilbert_order = self.model.__class__.curve_sels[1][0][1]
                     self.model.__class__.block_neighbor_list = self.model.__class__.curve_sels[1][0][2]
                     self.model.__class__.p_remain_rates = self.model.__class__.p_remain_rates
                     self.model.stage_start = True
                 else:
-                # sample_scheduler.disable_corrector = False
+                    # sample_scheduler.disable_corrector = False
                     self.model.stage_start = False
                     # stage_changed = False
                     temp_x0 = sample_scheduler.step(
@@ -775,7 +782,7 @@ def _parse_args():
     parser.add_argument(
         "--prompt_extend_target_lang",
         type=str,
-        default="en",
+        default="ch",
         choices=["ch", "en"],
         help="The target language of prompt extend.")
     parser.add_argument(
@@ -817,10 +824,11 @@ def _parse_args():
         default=False,
         help="Using Retention Steps will result in faster generation speed and better generation quality.")
     parser.add_argument(
-        "--sa_drop_rate",
+        "--sa_drop_rates",
         type=float,
         default=0.0,
-        help="The drop rate of self-attention.")
+        nargs="+",
+        help="The drop rates of self-attention.")
     parser.add_argument(
         "--save_folder",
         type=str,
@@ -846,6 +854,12 @@ def _parse_args():
         type=str,
         default=None,
         help="The file to save the generated image or video to.")
+    parser.add_argument(
+        "--enable_turbo",
+        action="store_true",
+        default=False,
+        help="Whether to enable turbo."
+    )
         
 
     args = parser.parse_args()
@@ -1001,7 +1015,7 @@ def generate(args):
         latent_time = (args.frame_num + 3) // 4
         latent_height = pixel_h // 16
         latent_width = pixel_w // 16
-        res_rate_list = [1.0, 1.0]
+        res_rate_list = [0.75, 1.0] if args.enable_turbo else [1.0, 1.0]
         
         curve_sels = []
         for res_rate in res_rate_list:
@@ -1095,7 +1109,7 @@ def generate(args):
                     formatted_prompt = args.prompt.replace(" ", "_").replace("/", "_")[:50]
                     suffix = '.png' if "t2i" in args.task else '.mp4'
                     os.makedirs(args.save_folder, exist_ok=True)
-                    print(args.prompt, current_id)
+                    # print(args.prompt, current_id)
                     args.save_file = f"{args.save_folder}/id_{current_id}_time_{formatted_time}_seed{args.base_seed}_{args.size.replace('*','x') if sys.platform=='win32' else args.size}_{formatted_prompt}.{suffix}"
 
                 if "t2i" in args.task:
