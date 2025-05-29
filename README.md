@@ -28,9 +28,10 @@ Please visit the [project page](https://julianjuaner.github.io/projects/jenga) f
   - [x] HunyuanVideo Inference 
   - [x] Multi-gpus Parallel inference (Faster inference speed on more gpus)
   - [x] HunyuanVideo-I2V Inference
-  - [ ] Wan2.1
+  - [x] Wan2.1-1.3B
+  - [ ] Wan2.1-14B (I2V, T2V)
 - Engineering Optimization
-  - [ ] Quantization
+  - [ ] Quantization (sage-attention)
   - [ ] ComfyUI
   - [ ] RoPE & Norm Kernel
   - [ ] FA3 Adaptation
@@ -183,6 +184,22 @@ We test on the default case: 1088x832x125f, 113K tokens, following is a referenc
 |HunyuanVideo| Jenga-Base | 
 | ---- | ---- | 
 | 1590s | 323s (4.92x)|
+
+### Inference on Wan2.1
+Currently, we support Wan2.1-1.3B. We are working on the 14B inference.
+
+First, download Wan2.1 models from HuggingFace [Wan2.1 1.3B](https://huggingface.co/Wan-AI/Wan2.1-T2V-1.3B)
+
+We support Jenga-Base and Jenga-Turbo, you may also adjust the `--teacache_thresh` or use **complex rewritten prompts** to resolve possible temporal flickering problem.
+
+```shell
+bash ./scripts/wan_1.3B_jenga_base.sh
+# bash ./scripts/wan_1.3B_jenga_turbo.sh
+```
+We test on the default case: 832x480x81f, 32K tokens, following is a reference DiT time (FlashAttention2):
+|Wan2.1-1.3B| Jenga-Base | Jenga-Turbo | 
+| ---- | ---- | ---- | 
+| 111s | 26s (4.26x) | 18s (6.16x)| 
 
 ## Method Overview
 The general idea of Jenga is to reduce token interactions in Diffusion Transformers (DiTs). Following is an overview.
