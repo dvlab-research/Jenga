@@ -31,7 +31,7 @@ Please visit the [project page](https://julianjuaner.github.io/projects/jenga) f
   - [x] Multi-gpus Parallel inference (Faster inference speed on more gpus)
   - [x] HunyuanVideo-I2V Inference
   - [x] Wan2.1-1.3B
-  - [ ] Wan2.1-14B (I2V, T2V)
+  - [x] Wan2.1-14B (I2V [not tested yet], T2V)
 - Engineering Optimization
   - [ ] Quantization (sage-attention)
   - [ ] ComfyUI
@@ -194,18 +194,25 @@ We test on the default case: 1088x832x125f, 113K tokens, following is a referenc
 Currently, we support Wan2.1-1.3B. We are working on the 14B inference.
 We use the same environment as in Hunyuan, please update enviorment if you find trouble in env setup, please refer to the official guideline in [Wan2.1](https://github.com/Wan-Video/Wan2.1).
 
-First, download Wan2.1 models from HuggingFace [Wan2.1 1.3B](https://huggingface.co/Wan-AI/Wan2.1-T2V-1.3B) to `./ckpts`
+First, download Wan2.1 models from HuggingFace [Wan2.1 1.3B](https://huggingface.co/Wan-AI/Wan2.1-T2V-1.3B), [Wan2.1 14B](https://huggingface.co/Wan-AI/Wan2.1-T2V-14B) to `./ckpts`
 
 We support Jenga-Base and Jenga-Turbo, you may also adjust the `--teacache_thresh` or use **complex rewritten prompts** to resolve possible temporal flickering problem.
 
 ```shell
 bash ./scripts/wan_1.3B_jenga_base.sh
 # bash ./scripts/wan_1.3B_jenga_turbo.sh
+# bash ./scripts/wan_14B_jenga_base.sh
+# bash ./scripts/wan_14B_jenga_turbo.sh
 ```
-We test on the default case: 832x480x81f, 32K tokens, following is a reference DiT time (FlashAttention2):
+For Wan 1.3B, we test on the default case: 832x480x81f, 32K tokens, following is a reference DiT time (FlashAttention2):
 |Wan2.1-1.3B| Jenga-Base | Jenga-Turbo | 
 | ---- | ---- | ---- | 
 | 111s | 26s (4.26x) | 18s (6.16x)| 
+
+For Wan 14B, **we introduced a decoupled first-frame block selection to eliminate the first-frame artifact**. We test on the default case: 1280x720x81f, following is a reference DiT time (FlashAttention2):
+|Wan2.1-14B| Jenga-Base | Jenga-Turbo | 
+| ---- | ---- | ---- | 
+| 1807s | 438s (4.12x) | 295s (6.12x)| 
 
 ## Method Overview
 The general idea of Jenga is to reduce token interactions in Diffusion Transformers (DiTs). Following is an overview.

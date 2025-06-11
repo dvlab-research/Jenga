@@ -5,6 +5,8 @@
 import numpy as np
 import sys
 import torch
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 
 
 def gilbert_xyz2d(x, y, z, width, height, depth):
@@ -327,6 +329,116 @@ def transpose_gilbert_mapping(dims, order=None):
     print(f"Transposed Gilbert curve mapping completed, total {total_points} points")
     return linear_to_hilbert, hilbert_to_linear
 
+def sliced_gilbert_mapping(t, h, w, transpose_order=None):
+    """
+    Create a sliced Gilbert curve mapping, prioritizing scanning in spatial dimensions (h,w),
+    then continuous in time dimension (t).
+    Ensures continuous connection between adjacent time slices.
+    
+    Parameters:
+        t: Size of the first dimension
+        h: Size of the second dimension
+        w: Size of the third dimension
+        transpose_order: Axis order, default is None (using standard order [0,1,2])
+                        Can be specified as [2,1,0] or other orders
+        
+    Returns:
+        linear_to_hilbert: List of length t*h*w, storing Gilbert curve indices corresponding to linear indices
+        hilbert_order: List of length t*h*w, storing linear indices corresponding to Gilbert curve indices
+    """
+    dims = [t, h, w]
+    
+    if transpose_order is None:
+        # Standard Gilbert mapping, no transposition
+        total_points = t * h * w
+        
+        # Initialize mapping arrays
+        linear_to_hilbert = [0] * total_points
+        hilbert_to_linear = [0] * total_points
+        
+        print(f"Computing sliced Gilbert curve mapping ({w}×{h}×{t})...")
+        
+        # Calculate Gilbert curve for each time slice
+        current_hilbert_idx = 0
+        last_end_pos = None  # Record end position of previous slice
+        
+        for z in range(t):
+            # Calculate Gilbert curve for current slice
+            slice_points = h * w
+            slice_linear_to_hilbert = [0] * slice_points
+            slice_hilbert_to_linear = [0] * slice_points
+            
+            # Determine starting position and direction for current slice
+            if last_end_pos is not None:
+                # Based on end position of previous slice, determine starting position and direction
+                end_x, end_y = last_end_pos
+                # Choose closest corner point as starting point
+                if end_x < w/2 and end_y < h/2:
+                    start_x, start_y = 0, 0
+                    flip_x, flip_y = False, False
+                elif end_x >= w/2 and end_y < h/2:
+                    start_x, start_y = w-1, 0
+                    flip_x, flip_y = True, False
+                elif end_x < w/2 and end_y >= h/2:
+                    start_x, start_y = 0, h-1
+                    flip_x, flip_y = False, True
+                else:
+                    start_x, start_y = w-1, h-1
+                    flip_x, flip_y = True, True
+            else:
+                # First slice starts from (0,0)
+                start_x, start_y = 0, 0
+                flip_x, flip_y = False, False
+            
+            # Calculate Gilbert curve for current slice
+            for y in range(h):
+                for x in range(w):
+                    # Calculate actual coordinates (considering flipping)
+                    actual_x = w-1-x if flip_x else x
+                    actual_y = h-1-y if flip_y else y
+                    
+                    # Calculate linear index (row-major order: y*w + x)
+                    linear_idx = y * w + x
+                    
+                    # Calculate Gilbert curve index
+                    hilbert_idx = gilbert_xyz2d(actual_x, actual_y, 0, w, h, 1)
+                    
+                    # Set mapping
+                    slice_linear_to_hilbert[linear_idx] = hilbert_idx
+                    slice_hilbert_to_linear[hilbert_idx] = linear_idx
+            
+            # Record end position of current slice
+            last_end_idx = slice_hilbert_to_linear[slice_points-1]
+            last_end_y = last_end_idx // w
+            last_end_x = last_end_idx % w
+            last_end_pos = (last_end_x, last_end_y)
+            
+            # Add current slice mapping to overall mapping
+            for y in range(h):
+                for x in range(w):
+                    # Calculate global linear index
+                    global_linear_idx = z * h * w + y * w + x
+                    
+                    # Calculate local linear index within current slice
+                    local_linear_idx = y * w + x
+                    
+                    # Get Gilbert index within current slice
+                    local_hilbert_idx = slice_linear_to_hilbert[local_linear_idx]
+                    
+                    # Set global mapping
+                    linear_to_hilbert[global_linear_idx] = current_hilbert_idx + local_hilbert_idx
+                    hilbert_to_linear[current_hilbert_idx + local_hilbert_idx] = global_linear_idx
+            
+            # Update starting index for next slice
+            current_hilbert_idx += slice_points
+        
+        print(f"Sliced Gilbert curve mapping completed, total {total_points} points")
+    else:
+        # Use transposed mapping
+        linear_to_hilbert, hilbert_to_linear = transpose_gilbert_mapping(dims, transpose_order)
+    
+    return linear_to_hilbert, hilbert_to_linear
+
 def gilbert_mapping(t, h, w, transpose_order=None):
     """
     Create mapping between linear indices and Gilbert curve indices, optionally supporting transposition
@@ -563,3 +675,232 @@ def gilbert_block_neighbor_mapping(t, h, w, block_size=128, transpose_order=None
     print(f"Calculated neighborhood relationships for {len(block_neighbors_list)} blocks")
     # print(block_neighbors_list)
     return block_neighbor_tensor
+
+def sliced_gilbert_block_neighbor_mapping(t, h, w, block_size=128, transpose_order=None):
+    """
+    Calculate block neighborhood relationships based on sliced Gilbert curve mapping
+    
+    Parameters:
+        t: Size of time dimension
+        h: Size of height dimension
+        w: Size of width dimension
+        block_size: Size of each block, default 128
+        transpose_order: Axis order, default is None (using standard order [0,1,2])
+        
+    Returns:
+        block_neighbor_tensor: Boolean tensor of shape (total_blocks, total_blocks),
+                             representing neighborhood relationships between blocks
+    """
+    # 1. Calculate total number of blocks
+    total_points = t * h * w
+    total_blocks = (total_points + block_size - 1) // block_size
+    
+    print(f"Space size: {t}×{h}×{w}, total points: {total_points}, total blocks: {total_blocks}")
+    
+    # 2. Create block coloring map
+    block_color_map = np.zeros((w, h, t), dtype=int)
+    
+    # 3. Get sliced Gilbert mapping
+    linear_to_hilbert, _ = sliced_gilbert_mapping(t, h, w, transpose_order)
+    
+    # 4. Color each point according to mapping
+    for z in range(t):
+        for y in range(h):
+            for x in range(w):
+                # Calculate linear index
+                linear_idx = z * h * w + y * w + x
+                
+                # Get Gilbert curve index
+                hilbert_idx = linear_to_hilbert[linear_idx]
+                
+                # Calculate block number
+                block_idx = hilbert_idx // block_size
+                
+                # Color
+                block_color_map[x, y, z] = block_idx
+    
+    # 5. Initialize neighborhood sets
+    block_neighbors = [set() for _ in range(total_blocks)]
+    
+    # 6. Traverse 3D space, update neighborhood relationships
+    for x in range(w):
+        for y in range(h):
+            for z in range(t):
+                current_block = block_color_map[x, y, z]
+                
+                # Add self to neighborhood
+                block_neighbors[current_block].add(current_block)
+                
+                # Check 26-neighborhood
+                for dx in [-1, 0, 1]:
+                    nx = x + dx
+                    if nx < 0 or nx >= w:
+                        continue
+                        
+                    for dy in [-1, 0, 1]:
+                        ny = y + dy
+                        if ny < 0 or ny >= h:
+                            continue
+                            
+                        for dz in [-1, 0, 1]:
+                            nz = z + dz
+                            if nz < 0 or nz >= t:
+                                continue
+                            
+                            # Skip self
+                            if dx == 0 and dy == 0 and dz == 0:
+                                continue
+                                
+                            # Get neighbor's block
+                            neighbor_block = block_color_map[nx, ny, nz]
+                            
+                            # Add to current block's neighborhood
+                            block_neighbors[current_block].add(neighbor_block)
+    
+    # 7. Convert to one-hot tensor
+    block_neighbor_tensor = torch.zeros((total_blocks, total_blocks), dtype=torch.bool)
+    for i, neighbors in enumerate(block_neighbors):
+        block_neighbor_tensor[i, list(neighbors)] = True
+    
+    print(f"Calculated neighborhood relationships for {len(block_neighbors)} blocks")
+    return block_neighbor_tensor
+
+def visualize_gilbert_curve(t, h, w, curve_type='normal', save_path=None):
+    """
+    Visualize Gilbert curve or sliced Gilbert curve
+    
+    Parameters:
+        t: Size of time dimension
+        h: Size of height dimension
+        w: Size of width dimension
+        curve_type: 'normal' or 'sliced', indicating which Gilbert curve to use
+        save_path: Path to save the image, if None then display the image
+    """
+    if curve_type == 'normal':
+        linear_to_hilbert, _ = gilbert_mapping(t, h, w)
+    else:
+        linear_to_hilbert, _ = sliced_gilbert_mapping(t, h, w)
+    
+    # Create coordinate points
+    points = []
+    for z in range(t):
+        for y in range(h):
+            for x in range(w):
+                linear_idx = z * h * w + y * w + x
+                hilbert_idx = linear_to_hilbert[linear_idx]
+                points.append((x, y, z, hilbert_idx))
+    
+    # Sort by Hilbert index
+    points.sort(key=lambda p: p[3])
+    
+    # Extract coordinates
+    x_coords = [p[0] for p in points]
+    y_coords = [p[1] for p in points]
+    z_coords = [p[2] for p in points]
+    
+    # Create 3D plot
+    fig = plt.figure(figsize=(12, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    
+    # Plot curve
+    ax.plot(x_coords, y_coords, z_coords, 'b-', linewidth=1)
+    
+    # Plot points
+    ax.scatter(x_coords, y_coords, z_coords, c='r', s=10)
+    
+    # Set title and labels
+    title = f"{'Sliced' if curve_type == 'sliced' else 'Standard'} Gilbert Curve ({w}×{h}×{t})"
+    ax.set_title(title)
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    
+    # Set axis limits
+    ax.set_xlim(0, w-1)
+    ax.set_ylim(0, h-1)
+    ax.set_zlim(0, t-1)
+    
+    # Set view angle
+    ax.view_init(elev=20, azim=45)
+    
+    if save_path:
+        plt.savefig(save_path)
+        plt.close()
+    else:
+        plt.show()
+
+def visualize_gilbert_curves_comparison(t, h, w, save_path=None):
+    """
+    Compare and display standard Gilbert curve and sliced Gilbert curve
+    
+    Parameters:
+        t: Size of time dimension
+        h: Size of height dimension
+        w: Size of width dimension
+        save_path: Path to save the image, if None then display the image
+    """
+    fig = plt.figure(figsize=(20, 8))
+    
+    # Standard Gilbert curve
+    ax1 = fig.add_subplot(121, projection='3d')
+    linear_to_hilbert, _ = gilbert_mapping(t, h, w)
+    points = []
+    for z in range(t):
+        for y in range(h):
+            for x in range(w):
+                linear_idx = z * h * w + y * w + x
+                hilbert_idx = linear_to_hilbert[linear_idx]
+                points.append((x, y, z, hilbert_idx))
+    points.sort(key=lambda p: p[3])
+    x_coords = [p[0] for p in points]
+    y_coords = [p[1] for p in points]
+    z_coords = [p[2] for p in points]
+    ax1.plot(x_coords, y_coords, z_coords, 'b-', linewidth=1)
+    ax1.scatter(x_coords, y_coords, z_coords, c='r', s=10)
+    ax1.set_title(f'Standard Gilbert Curve ({w}×{h}×{t})')
+    ax1.set_xlabel('X')
+    ax1.set_ylabel('Y')
+    ax1.set_zlabel('Z')
+    ax1.view_init(elev=20, azim=45)
+    
+    # Sliced Gilbert curve
+    ax2 = fig.add_subplot(122, projection='3d')
+    linear_to_hilbert, _ = sliced_gilbert_mapping(t, h, w)
+    points = []
+    for z in range(t):
+        for y in range(h):
+            for x in range(w):
+                linear_idx = z * h * w + y * w + x
+                hilbert_idx = linear_to_hilbert[linear_idx]
+                points.append((x, y, z, hilbert_idx))
+    points.sort(key=lambda p: p[3])
+    x_coords = [p[0] for p in points]
+    y_coords = [p[1] for p in points]
+    z_coords = [p[2] for p in points]
+    ax2.plot(x_coords, y_coords, z_coords, 'b-', linewidth=1)
+    ax2.scatter(x_coords, y_coords, z_coords, c='r', s=10)
+    ax2.set_title(f'Sliced Gilbert Curve ({w}×{h}×{t})')
+    ax2.set_xlabel('X')
+    ax2.set_ylabel('Y')
+    ax2.set_zlabel('Z')
+    ax2.view_init(elev=20, azim=45)
+    
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path)
+        plt.close()
+    else:
+        plt.show()
+        
+if __name__ == '__main__':
+    # Display single curve
+    visualize_gilbert_curve(t=4, h=12, w=33, curve_type='normal', save_path='normal_gilbert.png')  # Display standard Gilbert curve
+    visualize_gilbert_curve(t=4, h=12, w=33, curve_type='sliced', save_path='sliced_gilbert.png')  # Display sliced Gilbert curve
+
+    # Compare and display both curves
+    visualize_gilbert_curves_comparison(t=4, h=12, w=33, save_path='gilbert_comparison.png')
+
+    # Save images
+    # visualize_gilbert_curve(t=4, h=8, w=8, curve_type='normal', save_path='normal_gilbert.png')
+    # visualize_gilbert_curves_comparison(t=4, h=8, w=8, save_path='gilbert_comparison.png')

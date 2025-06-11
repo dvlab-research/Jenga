@@ -31,7 +31,7 @@ from wan.utils.fm_solvers import (FlowDPMSolverMultistepScheduler,
 from wan.utils.fm_solvers_unipc import FlowUniPCMultistepScheduler
 from tqdm import tqdm
 
-from gilbert import gilbert_mapping, gilbert_block_neighbor_mapping
+from gilbert import gilbert_mapping, sliced_gilbert_block_neighbor_mapping, sliced_gilbert_mapping, gilbert_block_neighbor_mapping
 
 EXAMPLE_PROMPT = {
     "t2v-1.3B": {
@@ -1023,8 +1023,14 @@ def generate(args):
             latent_time_ = int(latent_time)
             latent_height_ = int(latent_height * res_rate)
             latent_width_ = int(latent_width * res_rate)
-            LINEAR_TO_HILBERT, HILBERT_ORDER = gilbert_mapping(latent_time_, latent_height_, latent_width_)
-            block_neighbor_list = gilbert_block_neighbor_mapping(latent_time_, latent_height_, latent_width_)
+            LINEAR_TO_HILBERT, HILBERT_ORDER = sliced_gilbert_mapping(latent_time_, latent_height_, latent_width_)
+            block_neighbor_list = sliced_gilbert_block_neighbor_mapping(latent_time_, latent_height_, latent_width_)
+            
+            # # linear settings.
+            # LINEAR_TO_HILBERT = torch.arange(latent_time_ * latent_height_ * latent_width_, dtype=torch.long) # linear
+            # HILBERT_ORDER = torch.arange(latent_time_ * latent_height_ * latent_width_, dtype=torch.long) # linear
+            # block_neighbor_list = torch.zeros((math.ceil(latent_time_ * latent_height_ * latent_width_ / 128), math.ceil(latent_time_ * latent_height_ * latent_width_ / 128)), dtype=torch.bool)
+            
             curve_sel.append([torch.tensor(LINEAR_TO_HILBERT, dtype=torch.long), torch.tensor(HILBERT_ORDER, dtype=torch.long), block_neighbor_list])
             curve_sels.append(curve_sel)
 

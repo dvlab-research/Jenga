@@ -315,42 +315,43 @@ def _build_block_index_with_importance_optimized(
     text_blocks: int = 2,          
     debug_print: bool = False,
     block_neighbor_list: torch.Tensor = None,  # [block_num, block_num] one-hot tensor
+    first_frame_blocks: int = 0,  # New parameter: first few blocks perform full self-attention
 ):
     cur_time = time.time()
     batch_size, num_heads, context_size, head_dim = query.shape
     num_query_blocks = (context_size + block_size_M - 1) // block_size_M
     device = query.device
     
-    # 1. 池化查询和键
+    # 1. Pool queries and keys
     query_pool = query.reshape((batch_size, num_heads, -1, block_size_M, head_dim)).mean(dim=-2)
     key_pool = key.reshape((batch_size, num_heads, -1, block_size_N, head_dim)).mean(dim=-2)
     
-    # 2. 计算注意力分数 - 使用bmm优化
-    # 重新整形为 [batch_size * num_heads, num_query_blocks, head_dim]
+    # 2. Calculate attention scores - using bmm optimization
+    # Reshape to [batch_size * num_heads, num_query_blocks, head_dim]
     q_bmm = query_pool.reshape(batch_size * num_heads, query_pool.shape[2], head_dim)
     
-    # 重新整形为 [batch_size * num_heads, head_dim, num_key_blocks]
+    # Reshape to [batch_size * num_heads, head_dim, num_key_blocks]
     k_bmm = key_pool.reshape(batch_size * num_heads, key_pool.shape[2], head_dim).transpose(1, 2)
     
-    # 使用bmm进行批量矩阵乘法
+    # Use bmm for batch matrix multiplication
     attention_scores_flat = torch.bmm(q_bmm, k_bmm) * (head_dim ** -0.5)
     
-    # 重新整形回原始维度 [batch_size, num_heads, num_query_blocks, num_key_blocks]
+    # Reshape back to original dimensions [batch_size, num_heads, num_query_blocks, num_key_blocks]
     attention_scores = attention_scores_flat.reshape(
         batch_size, num_heads, query_pool.shape[2], key_pool.shape[2]
     )
     
-    # 3. 只处理非文本块部分的分数
+    # 3. Only process scores for non-text blocks
     normal_scores = attention_scores[:, :, :, :text_start_block]
     
-    # 4. 使用直接softmax计算每个查询的概率分布
+    # 4. Use direct softmax to calculate probability distribution for each query
     probs = torch.softmax(normal_scores, dim=-1)
     
-    # 5. 对每个head的每个query的概率分布排序
+    # 5. Sort probability distribution for each head and query
     sorted_probs, indices = torch.sort(probs, dim=-1, descending=True)
     cumsum_probs = torch.cumsum(sorted_probs, dim=-1)
     
-    # 6. 找到每个(batch, head, query)位置需要的block数量
+    # 6. Find number of blocks needed for each (batch, head, query) position
     mask = cumsum_probs <= prob_threshold
     num_blocks_needed = mask.sum(dim=-1) + 1  # [batch, heads, queries]
     num_blocks_needed = torch.maximum(
@@ -358,13 +359,13 @@ def _build_block_index_with_importance_optimized(
         torch.tensor(top_k, device=device)
     )
     
-    # 创建返回的one-hot张量 [batch_size, num_heads, num_query_blocks, num_blocks]
+    # Create one-hot output tensor [batch_size, num_heads, num_query_blocks, num_blocks]
     one_hot_output = torch.zeros(
         (batch_size, num_heads, num_query_blocks, num_blocks), 
         dtype=torch.bool, device=device
     )
     max_k = indices.shape[-1]
-    # 使用einsum-based indexing for reduced memory:
+    # Use einsum-based indexing for reduced memory:
     batch_idx = torch.arange(batch_size, device=device).view(-1, 1, 1, 1).expand(-1, num_heads, num_query_blocks, max_k)
     head_idx = torch.arange(num_heads, device=device).view(1, -1, 1, 1).expand(batch_size, -1, num_query_blocks, max_k)
     query_idx = torch.arange(num_query_blocks, device=device).view(1, 1, -1, 1).expand(batch_size, num_heads, -1, max_k)
@@ -373,31 +374,38 @@ def _build_block_index_with_importance_optimized(
     # Create mask more efficiently
     valid_mask = k_idx < num_blocks_needed.unsqueeze(-1)
     
-    # 找出所有需要填充的位置
+    # Find all positions that need to be filled
     b_indices = batch_idx[valid_mask]
     h_indices = head_idx[valid_mask]
     q_indices = query_idx[valid_mask]
     
-    # 获取这些位置对应的索引值
+    # Get index values corresponding to these positions
     flat_indices = indices[b_indices, h_indices, q_indices, k_idx[valid_mask]]
     
-    # 使用scatter和索引操作一次性填充
+    # Use scatter and index operations to fill in one go
     one_hot_output[b_indices, h_indices, q_indices, flat_indices] = True
     
-    
-    # 添加物理邻居 - 直接取并集
+    # Add physical neighbors - directly take union
     if block_neighbor_list is not None:
-        # 确保block_neighbor_list在正确的设备上
+        # Ensure block_neighbor_list is on the correct device
         if block_neighbor_list.device != device:
             block_neighbor_list = block_neighbor_list.to(device)
         
-        # 确保尺寸匹配并转换为布尔型
+        # Ensure dimensions match and convert to boolean
         neighbor_mask = block_neighbor_list[:num_query_blocks, :text_start_block].bool()
         
-        # 扩展到[batch, heads, q_blocks, blocks]维度并与现有输出取并集
+        # Expand to [batch, heads, q_blocks, blocks] dimension and take union with existing output
         one_hot_output[:, :, :neighbor_mask.shape[0], :text_start_block] |= neighbor_mask.unsqueeze(0).unsqueeze(0)
     
-    # 添加文本块 - 所有批次、所有头、所有查询块都能看到所有文本块
+    # Handle full self-attention for first_frame_blocks
+    if first_frame_blocks > 0:
+        # First set all attention for first_frame_blocks to False
+        # one_hot_output[:, :, :first_frame_blocks, :] = False
+        # Then only allow them to see the first first_frame_blocks
+        for i in range(first_frame_blocks):
+            one_hot_output[:, :, i, :first_frame_blocks] = True
+    
+    # Add text blocks - all batches, all heads, all query blocks can see all text blocks
     if text_blocks > 0 and text_start_block is not None:
         one_hot_output[:, :, :, text_start_block:min(text_start_block+text_blocks, num_blocks)] = True
 
@@ -420,6 +428,7 @@ def block_sparse_attention_combined(
     prob_threshold: float = 0.5,  # New parameter
     block_neighbor_list: torch.Tensor = None,
     shape_xfuse: bool = False,
+    first_frame_blocks: int = 0,  # New parameter: first few blocks perform full self-attention
 ):
     """
     Combined attention processing for normal blocks and text blocks:
@@ -447,8 +456,9 @@ def block_sparse_attention_combined(
     def half(x):
         return x if x.dtype == dtype else x.to(dtype)
 
-    query = query.to(value.dtype)
-    key = key.to(value.dtype)
+    query = half(query)
+    key = half(key)
+    value = half(value)
     sm_scale = head_dim ** -0.5
     padded_context_size = query.shape[2]
     num_blocks = (padded_context_size + block_size_M - 1) // block_size_M
@@ -468,27 +478,28 @@ def block_sparse_attention_combined(
             text_start_block=normal_blocks, num_blocks=num_blocks,
             prob_threshold=prob_threshold,
             text_blocks=text_blocks,
-            block_neighbor_list=block_neighbor_list
+            block_neighbor_list=block_neighbor_list,
+            first_frame_blocks=first_frame_blocks
         )
         
-        # 直接使用one-hot版本的sparse attention
+        # Direct use of one-hot version sparse attention
         output_normal = _triton_block_sparse_attention_onehot(
             query_normal, key, value, seqlens, 
             block_relation_onehot, sm_scale, block_size_M, block_size_N,
-            is_text_block=False,  # 这不是文本块
-            text_amp=text_amp,         # 控制文本块的qk值缩放
-            text_block_start=normal_blocks,   # 文本块开始的索引
+            is_text_block=False,  # This is not a text block
+            text_amp=text_amp,         # Controls qk value scaling for text blocks
+            text_block_start=normal_blocks,   # Starting index of text blocks
         )
     else:
         output_normal = torch.empty(0, device=query.device)
     
-    # 2. 处理文本块（完全注意力到所有块）
+    # 2. Process text blocks (full attention to all blocks)
     if text_blocks > 0:
-        # 提取文本块
+        # Extract text blocks
         query_text = query[:, :, normal_tokens:, :]
-        key_text = key  # 可以看到所有key
+        key_text = key  # Can see all keys
         value_text = value
-        # 使用Flash Attention
+        # Use Flash Attention
         output_text = flash_attn_func(
             query_text.permute(0, 2, 1, 3), key_text.permute(0, 2, 1, 3), value_text.permute(0, 2, 1, 3),
             causal=False, softmax_scale=sm_scale
@@ -496,7 +507,7 @@ def block_sparse_attention_combined(
     else:
         output_text = torch.empty(0, device=query.device)
     
-    # 合并输出
+    # Merge outputs
     if normal_blocks > 0 and text_blocks > 0:
         output = torch.cat([output_normal, output_text], dim=2)[:, :, :context_size, :]
     elif normal_blocks > 0:
@@ -507,10 +518,10 @@ def block_sparse_attention_combined(
     if not shape_xfuse:
         output = output.permute(0, 2, 1, 3).reshape(batch_size, context_size, -1)
         return output.type(out_dtype)
-    # 移除填充
+    # Remove padding
     return output.permute(0, 2, 1, 3).type(out_dtype)
 
-# 保持原始函数作为后向兼容性的别名
+# Keep the original function as an alias for backward compatibility
 def block_sparse_attention(
     query: torch.Tensor,
     key: torch.Tensor,     
@@ -527,14 +538,15 @@ def block_sparse_attention(
     block_neighbor_list: torch.Tensor = None,
     shape_xfuse: bool = False,
     p_remain_rates: float = 0.9,
+    first_frame_blocks: int = 0,  # New parameter: first few blocks perform full self-attention
 ):
     """
-    围绕block_sparse_attention_combined的后向兼容包装器。
+    Backward compatible wrapper around block_sparse_attention_combined.
     """
     # print(f"p_remain_rates: {p_remain_rates}")
     return block_sparse_attention_combined(
         query, key, value, top_k, block_size_M, block_size_N,
         cu_seqlens_q, cu_seqlens_kv, max_seqlen_q, max_seqlen_kv, 
-        text_blocks, text_amp, block_neighbor_list=block_neighbor_list, shape_xfuse=shape_xfuse,
+        text_blocks, text_amp, block_neighbor_list=block_neighbor_list, shape_xfuse=shape_xfuse, first_frame_blocks=first_frame_blocks,
         prob_threshold=p_remain_rates
     )

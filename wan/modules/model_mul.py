@@ -150,7 +150,7 @@ class WanSelfAttention(nn.Module):
 
         q, k, v = qkv_fn(x)
 
-        if self.index >= self.num_layers - 3 or sa_drop_rate == 0.0:
+        if sa_drop_rate == 0.0:
             x = flash_attention(
                 q=rope_apply(q, grid_sizes, freqs, freq_remap),
                 k=rope_apply(k, grid_sizes, freqs, freq_remap),
@@ -158,10 +158,11 @@ class WanSelfAttention(nn.Module):
                 k_lens=seq_lens,
                 window_size=self.window_size)
         else:
-            num_blocks = x.shape[1] // per_block_tokens
-            selected_top_k = int(num_blocks * (1-sa_drop_rate))
+            # count ceiling.
+            num_blocks = math.ceil(x.shape[1] / per_block_tokens)
+            selected_top_k = math.ceil(int(num_blocks * (1-sa_drop_rate)))
+            first_frame_blocks = math.ceil(num_blocks // 21)
             
-            # print(selected_top_k, x.shape[1])
             x = block_sparse_attention(
                 query=rope_apply(q, grid_sizes, freqs, freq_remap),
                 key=rope_apply(k, grid_sizes, freqs, freq_remap),
@@ -170,8 +171,8 @@ class WanSelfAttention(nn.Module):
                 top_k=selected_top_k,
                 text_blocks=0,
                 block_neighbor_list=block_neighbor_list,
-                p_remain_rates=p_remain_rates
-                # window_size=self.window_size
+                p_remain_rates=p_remain_rates,
+                first_frame_blocks=first_frame_blocks
             )
         # output
         x = x.flatten(2)
