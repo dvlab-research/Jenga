@@ -14,5 +14,5 @@ CUDA_VISIBLE_DEVICES=0 python jenga_wan.py  \
     --t5_cpu \
     --use_ret_step \
     --offload_model true \
-    --sa_drop_rates 0.6 0.9 \
+    --sa_drop_rates 0.7 0.9 \
     --save_folder ./results/wan_14B_jenga_base 
