@@ -9,7 +9,7 @@ CUDA_VISIBLE_DEVICES=0 python jenga_wan.py  \
     --base_seed 0 \
     --offload_model false \
     --frame_num 81 \
-    --teacache_thresh 0.1 \
+    --teacache_thresh 0.15 \
     --p_remain_rates 0.9 \
     --t5_cpu \
     --use_ret_step \
