@@ -251,7 +251,7 @@ def t2v_generate(self,
             if self.rank == 0:
                 videos = self.vae.decode(x0)
 
-        del noise, latents
+        del latents
         del sample_scheduler
         if offload_model:
             gc.collect()
