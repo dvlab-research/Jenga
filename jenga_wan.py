@@ -166,6 +166,17 @@ def t2v_generate(self,
                     device=self.device,
                     generator=seed_g)
             ]
+            if args.enable_turbo:
+                noise = [
+                    torch.randn(
+                        target_shape[0],
+                        target_shape[1],
+                        target_shape[2],
+                        target_shape[3],
+                        dtype=torch.float32,
+                        device=self.device,
+                        generator=seed_g)
+                ]
             # sample videos
             latents = noise_down_sample
            
@@ -191,7 +202,7 @@ def t2v_generate(self,
 
                 timestep = torch.stack(timestep)
                 # drop_rate warmup.
-                step_normed = idx / (len(timesteps) - 1) * 4
+                step_normed = idx / (len(timesteps) - 1) * 10
                 cur_sa_drop_rate = min(cur_sa_drop_rate, (step_normed) * cur_sa_drop_rate)
                 
 
@@ -252,7 +263,6 @@ def t2v_generate(self,
                 videos = self.vae.decode(x0)
 
         del latents
-        del sample_scheduler
         if offload_model:
             gc.collect()
             torch.cuda.synchronize()

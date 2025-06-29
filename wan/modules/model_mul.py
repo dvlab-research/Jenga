@@ -149,8 +149,8 @@ class WanSelfAttention(nn.Module):
             return q, k, v
 
         q, k, v = qkv_fn(x)
-
-        if sa_drop_rate == 0.0:
+        # print(sa_drop_rate)
+        if sa_drop_rate <= 0.25: # directly use FA Full.
             x = flash_attention(
                 q=rope_apply(q, grid_sizes, freqs, freq_remap),
                 k=rope_apply(k, grid_sizes, freqs, freq_remap),

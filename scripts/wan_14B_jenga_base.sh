@@ -10,9 +10,9 @@ CUDA_VISIBLE_DEVICES=0 python jenga_wan.py  \
     --offload_model false \
     --frame_num 81 \
     --teacache_thresh 0.15 \
-    --p_remain_rates 0.9 \
+    --p_remain_rates 0.8 \
     --t5_cpu \
     --use_ret_step \
     --offload_model true \
-    --sa_drop_rates 0.7 0.9 \
-    --save_folder ./results/wan_14B_jenga_base 
+    --sa_drop_rates 0.7 0.8 \
+    --save_folder ./results/wan_14B_jenga_base_new

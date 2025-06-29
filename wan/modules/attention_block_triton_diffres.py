@@ -436,6 +436,8 @@ def block_sparse_attention_combined(
     2. Text blocks get full attention (can see all blocks)
     3. All normal blocks can see all text blocks
     """
+    # cur_time = time.time()
+    # torch.cuda.synchronize()
     query = query.transpose(1, 2)
     key = key.transpose(1, 2)
     value = value.transpose(1, 2)
@@ -471,7 +473,9 @@ def block_sparse_attention_combined(
     # Pre-compute pooled query and key for block index building
     if normal_blocks > 0:
         query_normal = query[:, :, :normal_tokens, :]
-        
+        # print("preprocess: ", time.time() - cur_time)
+        # cur_time = time.time()
+        # torch.cuda.synchronize()
         # Pass pre-computed pools to block index function
         block_relation_onehot = _build_block_index_with_importance_optimized(
             query_normal, key, top_k, block_size_M, block_size_N, 
@@ -481,7 +485,9 @@ def block_sparse_attention_combined(
             block_neighbor_list=block_neighbor_list,
             first_frame_blocks=first_frame_blocks
         )
-        
+        # print("block index: ", time.time() - cur_time)
+        # cur_time = time.time()
+        # torch.cuda.synchronize()
         # Direct use of one-hot version sparse attention
         output_normal = _triton_block_sparse_attention_onehot(
             query_normal, key, value, seqlens, 
@@ -490,9 +496,11 @@ def block_sparse_attention_combined(
             text_amp=text_amp,         # Controls qk value scaling for text blocks
             text_block_start=normal_blocks,   # Starting index of text blocks
         )
+        # print("triton: ", time.time() - cur_time)
+        # cur_time = time.time()
     else:
         output_normal = torch.empty(0, device=query.device)
-    
+    # torch.cuda.synchronize()
     # 2. Process text blocks (full attention to all blocks)
     if text_blocks > 0:
         # Extract text blocks
@@ -514,7 +522,9 @@ def block_sparse_attention_combined(
         output = output_normal[:, :, :context_size, :]
     else:
         output = output_text
-    
+    # print("output: ", time.time() - cur_time)
+    # cur_time = time.time()
+    # torch.cuda.synchronize()
     if not shape_xfuse:
         output = output.permute(0, 2, 1, 3).reshape(batch_size, context_size, -1)
         return output.type(out_dtype)
