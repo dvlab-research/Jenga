@@ -1011,7 +1011,7 @@ def generate(args):
         wan_t2v.model.__class__.enable_teacache = True
         wan_t2v.model.__class__.forward = teacache_forward
         # JULIAN: space curve related.
-        pixel_h, pixel_w = SIZE_CONFIGS[args.size]
+        pixel_w, pixel_h = SIZE_CONFIGS[args.size]
         latent_time = (args.frame_num + 3) // 4
         latent_height = pixel_h // 16
         latent_width = pixel_w // 16
